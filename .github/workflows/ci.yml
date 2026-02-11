@@ -97,7 +97,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur
           chmod 600 ~/.ssh/aur
-          ssh-keyscan -t rsa aur.archlinux.org >> ~/.ssh/known_hosts
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
 
           cat >> ~/.ssh/config << EOF
           Host aur.archlinux.org
@@ -105,6 +105,9 @@ jobs:
             IdentityFile ~/.ssh/aur
             StrictHostKeyChecking no
           EOF
+
+          # Verify key is valid
+          ssh-keygen -y -f ~/.ssh/aur > /dev/null 2>&1 || { echo "::error::AUR_SSH_KEY secret is not a valid private key"; exit 1; }
 
       - name: Push to AUR
         run: |
