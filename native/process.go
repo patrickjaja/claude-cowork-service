@@ -61,6 +61,25 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 				log.Printf("[native] resolved %s → %s", cmd, resolved)
 			}
 			cmd = resolved
+		} else {
+			// Fallback: check common Linux install locations
+			// (systemd user services have minimal PATH, missing ~/.local/bin)
+			base := filepath.Base(cmd)
+			home := os.Getenv("HOME")
+			candidates := []string{
+				filepath.Join(home, ".local", "bin", base),
+				"/usr/local/bin/" + base,
+				"/usr/bin/" + base,
+			}
+			for _, candidate := range candidates {
+				if _, statErr := os.Stat(candidate); statErr == nil {
+					if pt.debug {
+						log.Printf("[native] fallback resolved %s → %s", cmd, candidate)
+					}
+					cmd = candidate
+					break
+				}
+			}
 		}
 	}
 

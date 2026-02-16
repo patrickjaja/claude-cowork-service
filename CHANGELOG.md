@@ -2,6 +2,11 @@
 
 All notable changes to claude-cowork-service will be documented in this file.
 
+## 0.3.1 — 2026-02-16
+
+### Fixed
+- **Fallback executable resolution for systemd** — when `exec.LookPath` fails (systemd user services have minimal PATH missing `~/.local/bin`), the daemon now checks `~/.local/bin`, `/usr/local/bin`, and `/usr/bin` as fallback candidates. Fixes "claude: executable file not found in $PATH" error for CustomPlugins.
+
 ## 0.3.0 — 2026-02-16
 
 ### Fixed
