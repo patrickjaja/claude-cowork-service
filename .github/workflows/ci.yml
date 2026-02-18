@@ -32,6 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -44,6 +45,17 @@ jobs:
 
       - name: Generate checksums
         run: sha256sum cowork-svc-linux > cowork-svc-linux.sha256
+
+      - name: Build Debian package
+        id: deb
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sudo apt-get install -y dpkg-dev
+          bash packaging/debian/build-deb.sh cowork-svc-linux "$VERSION"
+          DEB_FILE="claude-cowork-service_${VERSION}_amd64.deb"
+          sha256sum "$DEB_FILE" > "${DEB_FILE}.sha256"
+          echo "deb_file=$DEB_FILE" >> $GITHUB_OUTPUT
+          echo "deb_sha256=$(cut -d' ' -f1 "${DEB_FILE}.sha256")" >> $GITHUB_OUTPUT
 
       - name: Extract changelog
         id: changelog
@@ -66,10 +78,79 @@ jobs:
           files: |
             cowork-svc-linux
             cowork-svc-linux.sha256
+            ${{ steps.deb.outputs.deb_file }}
+            ${{ steps.deb.outputs.deb_file }}.sha256
           body: |
             ${{ steps.changelog.outputs.content }}
 
-            **Install:** `yay -S claude-cowork-service`
+            ### Install
+
+            **Debian / Ubuntu (APT):**
+            ```
+            curl -fsSL https://patrickjaja.github.io/claude-cowork-service/install.sh | sudo bash
+            sudo apt install claude-cowork-service
+            ```
+
+            **Arch Linux (AUR):** `yay -S claude-cowork-service`
+
+            **Any distro:** `curl -fsSL .../scripts/install.sh | bash`
+
+      - name: Update and Deploy APT Repository
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DEB_FILE="$(pwd)/${{ steps.deb.outputs.deb_file }}"
+
+          if [ ! -f "$DEB_FILE" ]; then
+            echo "::warning::No .deb file found at $DEB_FILE — skipping APT repo deploy"
+            exit 0
+          fi
+
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "::warning::APT_GPG_PRIVATE_KEY secret not set — skipping APT repo deploy"
+            exit 0
+          fi
+
+          # Install APT repo tools
+          sudo apt-get install -y dpkg-dev apt-utils
+
+          # Import GPG key from secret
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          GPG_KEY_ID=$(echo "$GPG_PRIVATE_KEY" | gpg --show-keys --with-colons 2>/dev/null \
+            | grep '^sec:' | head -1 | cut -d: -f5)
+
+          # Clone existing gh-pages branch (or init fresh if first time)
+          APT_REPO_DIR="/tmp/apt-repo"
+          rm -rf "$APT_REPO_DIR"
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          if git ls-remote --heads "$REMOTE" gh-pages | grep -q gh-pages; then
+            git clone --depth 1 --branch gh-pages "$REMOTE" "$APT_REPO_DIR"
+          else
+            mkdir -p "$APT_REPO_DIR" && cd "$APT_REPO_DIR"
+            git init && git checkout -b gh-pages && git remote add origin "$REMOTE"
+            cd -
+          fi
+
+          # Copy static files from main branch
+          cp packaging/apt/install.sh "$APT_REPO_DIR/"
+          cp packaging/apt/index.html "$APT_REPO_DIR/"
+          gpg --armor --export "$GPG_KEY_ID" > "$APT_REPO_DIR/gpg-key.asc"
+          touch "$APT_REPO_DIR/.nojekyll"
+
+          # Build APT repo metadata
+          bash packaging/apt/update-apt-repo.sh "$DEB_FILE" "$APT_REPO_DIR" "$GPG_KEY_ID"
+
+          # Commit and push
+          cd "$APT_REPO_DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || {
+            git commit -m "Update APT repo: claude-cowork-service ${VERSION}"
+            git push origin gh-pages
+          }
 
   aur:
     needs: release

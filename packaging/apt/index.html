@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Cowork Service — APT Repository</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; line-height: 1.6; }
+    h1 { border-bottom: 2px solid #e5e5e5; padding-bottom: 0.5rem; }
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+    code { background: #f4f4f4; padding: 0.15rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+    a { color: #0066cc; }
+    .note { background: #fff3cd; border-left: 4px solid #ffc107; padding: 0.75rem 1rem; border-radius: 4px; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Claude Cowork Service</h1>
+  <p>APT repository for <a href="https://github.com/patrickjaja/claude-cowork-service">claude-cowork-service</a> — the native Linux backend for Claude Desktop's Cowork feature.</p>
+
+  <h2>Quick Setup (Debian / Ubuntu)</h2>
+  <pre>curl -fsSL https://patrickjaja.github.io/claude-cowork-service/install.sh | sudo bash
+sudo apt install claude-cowork-service</pre>
+
+  <h2>Manual Setup</h2>
+  <pre># Import GPG key
+curl -fsSL https://patrickjaja.github.io/claude-cowork-service/gpg-key.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/claude-cowork-service.gpg
+
+# Add repository
+echo "deb [signed-by=/etc/apt/keyrings/claude-cowork-service.gpg arch=amd64] https://patrickjaja.github.io/claude-cowork-service/deb/ ./" \
+  | sudo tee /etc/apt/sources.list.d/claude-cowork-service.list
+
+# Install
+sudo apt update &amp;&amp; sudo apt install claude-cowork-service</pre>
+
+  <h2>After Installation</h2>
+  <pre># Enable and start the service
+systemctl --user daemon-reload
+systemctl --user enable --now claude-cowork
+
+# Verify
+systemctl --user status claude-cowork</pre>
+
+  <h2>Updates</h2>
+  <p>Once installed, updates arrive through your normal system updates:</p>
+  <pre>sudo apt update &amp;&amp; sudo apt upgrade</pre>
+
+  <h2>Other Distros</h2>
+  <ul>
+    <li><strong>Arch Linux / Manjaro:</strong> <code>yay -S claude-cowork-service</code> (<a href="https://aur.archlinux.org/packages/claude-cowork-service">AUR</a>)</li>
+    <li><strong>Any distro:</strong> <code>curl -fsSL .../scripts/install.sh | bash</code> (<a href="https://github.com/patrickjaja/claude-cowork-service#quick-install-any-distro">details</a>)</li>
+  </ul>
+
+  <div class="note">
+    This is an unofficial community package, not supported by Anthropic.
+  </div>
+
+  <p><a href="https://github.com/patrickjaja/claude-cowork-service">Source &amp; Issues on GitHub</a></p>
+</body>
+</html>

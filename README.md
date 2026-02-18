@@ -58,6 +58,18 @@ To uninstall:
 curl -fsSL https://raw.githubusercontent.com/patrickjaja/claude-cowork-service/main/scripts/install.sh | bash -s -- --uninstall
 ```
 
+### Debian / Ubuntu (APT Repository)
+
+```bash
+# Add repository (one-time setup)
+curl -fsSL https://patrickjaja.github.io/claude-cowork-service/install.sh | sudo bash
+
+# Install
+sudo apt install claude-cowork-service
+```
+
+Updates are automatic via `sudo apt update && sudo apt upgrade`.
+
 ### Arch Linux (AUR)
 
 ```bash

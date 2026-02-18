@@ -2,6 +2,13 @@
 
 All notable changes to claude-cowork-service will be documented in this file.
 
+## 0.3.3 — 2026-02-18
+
+### Added
+- **APT repository for Debian/Ubuntu** — CI now builds `.deb` packages and deploys a GPG-signed APT repository to GitHub Pages. Users can install via `curl -fsSL .../install.sh | sudo bash && sudo apt install claude-cowork-service`.
+- **Debian package build script** (`packaging/debian/build-deb.sh`) — creates `.deb` from the static Go binary + systemd user service
+- **APT repo tooling** (`packaging/apt/`) — install script, update-apt-repo script, and GitHub Pages landing page
+
 ## 0.3.2 — 2026-02-16
 
 ### Fixed
