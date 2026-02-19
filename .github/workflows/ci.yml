@@ -191,6 +191,7 @@ jobs:
             chown -R builder:builder /pkg
             su builder -c "makepkg --printsrcinfo" > .SRCINFO
           '
+          sudo chown -R "$USER:$USER" .
           echo ".SRCINFO:"
           cat .SRCINFO
 
