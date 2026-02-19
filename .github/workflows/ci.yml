@@ -11,7 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - uses: actions/setup-go@v5
         with:
@@ -34,7 +34,7 @@ jobs:
       contents: write
       pages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - uses: actions/setup-go@v5
         with:
@@ -157,39 +157,41 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      - name: Update PKGBUILD version
+      - name: Update PKGBUILD version + sha256
         run: |
-          sed -i "s/^pkgver=.*/pkgver=${{ steps.version.outputs.version }}/" PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          set -euo pipefail
+          VER="${{ steps.version.outputs.version }}"
+
+          # Update pkgver/pkgrel
+          sed -i -E "s/^pkgver=.*/pkgver=${VER}/" PKGBUILD
+          sed -i -E "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+          # Compute sha256 of release tarball for this version
+          URL="https://github.com/${{ github.repository }}/archive/v${VER}.tar.gz"
+          SHA="$(curl -fsSL "$URL" | sha256sum | awk '{print $1}')"
+
+          # Replace the first sha256sums entry (simple case: single source tarball)
+          sed -i -E "s/^sha256sums=.*/sha256sums=('${SHA}')/" PKGBUILD
+
+          echo "Updated PKGBUILD:"
           cat PKGBUILD
 
-      - name: Generate .SRCINFO
+      - name: Generate .SRCINFO (in Arch container)
         run: |
-          source PKGBUILD
-
-          cat > .SRCINFO << SRCEOF
-          pkgbase = ${pkgname}
-          	pkgdesc = ${pkgdesc}
-          	pkgver = ${pkgver}
-          	pkgrel = ${pkgrel}
-          	url = ${url}
-          	arch = ${arch[0]}
-          	license = ${license[0]}
-          	makedepends = go
-          	provides = claude-cowork-service
-          	install = claude-cowork-service.install
-          	source = ${pkgname}-${pkgver}.tar.gz::${url}/archive/v${pkgver}.tar.gz
-          	sha256sums = SKIP
-
-          pkgname = ${pkgname}
-          SRCEOF
-
+          set -euo pipefail
+          docker run --rm -v "$PWD":/pkg -w /pkg archlinux:base-devel bash -lc '
+            pacman -Sy --noconfirm --needed git base-devel
+            useradd -m builder
+            chown -R builder:builder /pkg
+            su builder -c "makepkg --printsrcinfo" > .SRCINFO
+          '
+          echo ".SRCINFO:"
           cat .SRCINFO
 
       - name: Setup SSH for AUR
