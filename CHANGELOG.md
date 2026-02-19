@@ -2,6 +2,18 @@
 
 All notable changes to claude-cowork-service will be documented in this file.
 
+## Unreleased
+
+### Changed
+- CI: Bump `actions/checkout` to `v6.0.2` (latest)
+- CI: Auto-sync PKGBUILD version and checksums from release tag
+- PKGBUILD: bump `pkgver` to `v1.0.0` (latest)
+- Makefile: stop forcing `-s -w` so packagers can handle stripping/debug symbols.
+- Makefile: use overridable variables (`?=`) for GO/GOFLAGS/LDFLAGS/CGO_ENABLED.
+
+### Fixed
+- Arch/AUR packaging: avoid implicit `sudo` dependency by using `runuser` in post-upgrade restart logic.
+
 ## 1.0.0 — 2026-02-18
 
 ### Changed
