@@ -3,7 +3,7 @@ BINARY ?= cowork-svc-linux
 GO ?= go
 CGO_ENABLED ?= 0
 GOFLAGS ?= -trimpath -buildmode=pie
-LDFLAGS ?= -X main.version=$(VERSION)
+LDFLAGS := -X main.version=$(VERSION)
 PREFIX ?= /usr
 DESTDIR ?=
 
