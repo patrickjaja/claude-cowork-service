@@ -4,6 +4,10 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+## 1.0.2 — 2026-02-19
+
+> Community contribution by [@nayrosk](https://github.com/nayrosk) — [PR #1](https://github.com/patrickjaja/claude-cowork-service/pull/1)
+
 ### Changed
 - CI: Bump `actions/checkout` to `v6.0.2` (latest)
 - CI: Auto-sync PKGBUILD version and checksums from release tag
@@ -13,6 +17,7 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ### Fixed
 - Arch/AUR packaging: avoid implicit `sudo` dependency by using `runuser` in post-upgrade restart logic.
+- Executable resolution: use login shell (`bash -lc`) for dynamic binary lookup, fixing paths for npm/cargo/nvm-installed tools.
 
 ## 1.0.0 — 2026-02-18
 
