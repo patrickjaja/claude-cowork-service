@@ -9,6 +9,9 @@ All notable changes to claude-cowork-service will be documented in this file.
 ### Fixed
 - Makefile: revert LDFLAGS from `?=` to `:=` — `makepkg` exports C linker flags (`-Wl,-O1 ...`) which broke `go build -ldflags`. Command-line overrides (`make LDFLAGS="..."`) still work.
 
+### Added
+- CI: build validation step that simulates `makepkg` LDFLAGS environment to prevent LDFLAGS regression.
+
 ## 1.0.2 — 2026-02-19
 
 > Community contribution by [@nayrosk](https://github.com/nayrosk) — [PR #1](https://github.com/patrickjaja/claude-cowork-service/pull/1)

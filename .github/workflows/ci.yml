@@ -23,6 +23,11 @@ jobs:
       - name: Build
         run: make
 
+      - name: Build with makepkg LDFLAGS
+        run: |
+          make clean
+          LDFLAGS="-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now" make build
+
       - name: Test
         run: go test ./...
 
