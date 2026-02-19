@@ -61,22 +61,30 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 			}
 			cmd = resolved
 		} else {
-			// Fallback: check common Linux install locations
-			// (systemd user services have minimal PATH, missing ~/.local/bin)
+			// Fallback: use login shell to resolve via user's full PATH
+			// (systemd services have minimal PATH, missing ~/.local/bin, npm global, nvm, etc.)
 			base := filepath.Base(cmd)
-			home := os.Getenv("HOME")
-			candidates := []string{
-				filepath.Join(home, ".local", "bin", base),
-				"/usr/local/bin/" + base,
-				"/usr/bin/" + base,
-			}
-			for _, candidate := range candidates {
-				if _, statErr := os.Stat(candidate); statErr == nil {
-					if pt.debug {
-						log.Printf("[native] fallback resolved %s → %s", cmd, candidate)
+			if out, whichErr := exec.Command("bash", "-lc", "which "+base).Output(); whichErr == nil {
+				resolved := filepath.Clean(string(bytes.TrimSpace(out)))
+				if pt.debug {
+					log.Printf("[native] shell resolved %s → %s", cmd, resolved)
+				}
+				cmd = resolved
+			} else {
+				// Last resort: check a few common locations
+				home := os.Getenv("HOME")
+				for _, candidate := range []string{
+					filepath.Join(home, ".local", "bin", base),
+					"/usr/local/bin/" + base,
+					"/usr/bin/" + base,
+				} {
+					if _, statErr := os.Stat(candidate); statErr == nil {
+						if pt.debug {
+							log.Printf("[native] fallback resolved %s → %s", cmd, candidate)
+						}
+						cmd = candidate
+						break
 					}
-					cmd = candidate
-					break
 				}
 			}
 		}
