@@ -11,7 +11,7 @@ buildGoModule rec {
     owner = "patrickjaja";
     repo = "claude-cowork-service";
     rev = "v${version}";
-    hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    hash = "sha256-/P2NXxZn92wysy1kPp7MdQvrzgnyfRPUe/5I24dH1U8=";
   };
 
   vendorHash = null; # Pure stdlib, no external dependencies

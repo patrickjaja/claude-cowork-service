@@ -34,7 +34,17 @@ jobs:
       - name: Test Nix Build
         uses: cachix/install-nix-action@v27
       - name: Build with Nix
-        run: nix build .#claude-cowork-service --no-link --print-build-logs
+        run: |
+          # Override src to use local checkout (avoids hash mismatch on unreleased commits)
+          nix build --no-link --print-build-logs --impure --expr '
+            let
+              flake = builtins.getFlake (toString ./.);
+              pkgs = import flake.inputs.nixpkgs { system = "x86_64-linux"; };
+            in
+              flake.packages.x86_64-linux.claude-cowork-service.overrideAttrs (old: {
+                src = pkgs.lib.cleanSource ./.;
+              })
+          '
 
   release:
     needs: build
