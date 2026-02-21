@@ -18,46 +18,51 @@ on:
           - major
 
 jobs:
-  tag-release:
-    if: github.event_name == 'workflow_dispatch'
+  prepare:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      do_release: ${{ steps.version.outputs.do_release }}
     steps:
       - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Compute next version
-        id: next
+      - name: Determine version
+        id: version
         run: |
-          LATEST=$(git tag --list 'v*' --sort=-v:refname | head -1)
-          if [ -z "$LATEST" ]; then
-            LATEST="v0.0.0"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            LATEST=$(git tag --list 'v*' --sort=-v:refname | head -1)
+            if [ -z "$LATEST" ]; then
+              LATEST="v0.0.0"
+            fi
+            MAJOR=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f1)
+            MINOR=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f2)
+            PATCH=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f3)
+
+            case "${{ inputs.bump }}" in
+              major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+              patch) PATCH=$((PATCH+1)) ;;
+            esac
+
+            echo "version=v${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+            echo "do_release=true" >> $GITHUB_OUTPUT
+            echo "Next version: v${MAJOR}.${MINOR}.${PATCH} (was $LATEST, bump: ${{ inputs.bump }})"
+
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "do_release=true" >> $GITHUB_OUTPUT
+            echo "Tag-triggered release: ${{ github.ref_name }}"
+
+          else
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "do_release=false" >> $GITHUB_OUTPUT
+            echo "No release (branch push or PR)"
           fi
-          MAJOR=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f1)
-          MINOR=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f2)
-          PATCH=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f3)
-
-          case "${{ inputs.bump }}" in
-            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
-            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
-            patch) PATCH=$((PATCH+1)) ;;
-          esac
-
-          echo "version=v${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
-          echo "Next version: v${MAJOR}.${MINOR}.${PATCH} (was $LATEST, bump: ${{ inputs.bump }})"
-
-      - name: Create and push tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.next.outputs.version }}" -m "Release ${{ steps.next.outputs.version }}"
-          git push origin "${{ steps.next.outputs.version }}"
-          echo "Pushed tag ${{ steps.next.outputs.version }} — this will trigger the release pipeline"
 
   build:
-    if: github.event_name != 'workflow_dispatch'
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -95,22 +100,34 @@ jobs:
           '
 
   release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, build]
+    if: needs.prepare.outputs.do_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pages: write
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
           cache: false
 
+      - name: Create tag (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${RELEASE_VERSION}" -m "Release ${RELEASE_VERSION}"
+          git push origin "${RELEASE_VERSION}"
+
       - name: Build release binary
-        run: make VERSION=${GITHUB_REF_NAME#v}
+        run: make VERSION=${RELEASE_VERSION#v}
 
       - name: Generate checksums
         run: sha256sum cowork-svc-linux > cowork-svc-linux.sha256
@@ -118,7 +135,7 @@ jobs:
       - name: Build Debian package
         id: deb
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_VERSION#v}"
           sudo apt-get install -y dpkg-dev
           bash packaging/debian/build-deb.sh cowork-svc-linux "$VERSION"
           DEB_FILE="claude-cowork-service_${VERSION}_amd64.deb"
@@ -129,7 +146,7 @@ jobs:
       - name: Build RPM package
         id: rpm
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_VERSION#v}"
           docker run --rm \
             -v "$(pwd):/build:ro" \
             -v "$(pwd)/rpm-out:/output" \
@@ -162,7 +179,7 @@ jobs:
       - name: Extract changelog
         id: changelog
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_VERSION#v}"
           # Extract section matching this version (everything between this header and the next)
           CONTENT=$(awk "/^## ${VERSION//./\\.}/ { found=1; next } /^## / { if (found) exit } found" CHANGELOG.md)
           # Fallback: extract first section
@@ -176,7 +193,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: ${{ needs.prepare.outputs.version }}
           files: |
             cowork-svc-linux
             cowork-svc-linux.sha256
@@ -197,7 +215,7 @@ jobs:
 
             **Fedora / RHEL (.rpm):**
             ```
-            sudo dnf install ./claude-cowork-service-${{ github.ref_name }}-1.x86_64.rpm
+            sudo dnf install ./claude-cowork-service-${{ needs.prepare.outputs.version }}-1.x86_64.rpm
             ```
 
             **NixOS:**
@@ -216,7 +234,7 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_VERSION#v}"
           DEB_FILE="$(pwd)/${{ steps.deb.outputs.deb_file }}"
 
           if [ ! -f "$DEB_FILE" ]; then
@@ -269,27 +287,25 @@ jobs:
           }
 
   aur:
-    needs: release
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, release]
+    if: needs.prepare.outputs.do_release == 'true'
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v6.0.2
-
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       - name: Update PKGBUILD version + sha256
         run: |
           set -euo pipefail
-          VER="${{ steps.version.outputs.version }}"
+          VER="${RELEASE_VERSION#v}"
 
           # Update pkgver/pkgrel
           sed -i -E "s/^pkgver=.*/pkgver=${VER}/" PKGBUILD
           sed -i -E "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
           # Compute sha256 of release tarball for this version
-          URL="https://github.com/${{ github.repository }}/archive/v${VER}.tar.gz"
+          URL="https://github.com/${{ github.repository }}/archive/${RELEASE_VERSION}.tar.gz"
           SHA="$(curl -fsSL "$URL" | sha256sum | awk '{print $1}')"
 
           # Replace the first sha256sums entry (simple case: single source tarball)
@@ -332,6 +348,7 @@ jobs:
 
       - name: Push to AUR
         run: |
+          VER="${RELEASE_VERSION#v}"
           git config --global user.name "${{ secrets.AUR_USERNAME }}"
           git config --global user.email "${{ secrets.AUR_EMAIL }}"
 
@@ -342,7 +359,7 @@ jobs:
           cd aur-repo
           git add PKGBUILD .SRCINFO claude-cowork-service.install
           git diff --staged --quiet || {
-            git commit -m "Update to version ${{ steps.version.outputs.version }}"
+            git commit -m "Update to version ${VER}"
             git push origin master
             echo "Successfully pushed to AUR"
           }
