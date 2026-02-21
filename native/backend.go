@@ -5,64 +5,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/patrickjaja/claude-cowork-service/process"
 )
-
-// dangerousEnvVars are environment variables that must never leak into spawned processes.
-// CLAUDECODE triggers "cannot be launched inside another session" errors.
-// ELECTRON_* are internal to the daemon's own Electron context.
-var dangerousEnvVars = []string{
-	"CLAUDECODE",
-	"ELECTRON_RUN_AS_NODE",
-	"ELECTRON_NO_ASAR",
-}
-
-// dangerousEnvPrefixes are prefixes of env vars to strip — the app provides its own via the env param.
-var dangerousEnvPrefixes = []string{
-	"CLAUDE_CODE_",
-}
-
-// isDangerousEnvKey returns true if the key should be stripped from spawned process environments.
-func isDangerousEnvKey(key string) bool {
-	for _, d := range dangerousEnvVars {
-		if key == d {
-			return true
-		}
-	}
-	for _, p := range dangerousEnvPrefixes {
-		if strings.HasPrefix(key, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// filterDaemonEnv returns the current process environment with dangerous vars removed.
-func filterDaemonEnv() []string {
-	var filtered []string
-	for _, entry := range os.Environ() {
-		key, _, _ := strings.Cut(entry, "=")
-		if !isDangerousEnvKey(key) {
-			filtered = append(filtered, entry)
-		}
-	}
-	return filtered
-}
-
-// filterAppEnv removes dangerous keys from app-provided env vars.
-func filterAppEnv(env map[string]string) map[string]string {
-	filtered := make(map[string]string, len(env))
-	for k, v := range env {
-		if !isDangerousEnvKey(k) {
-			filtered[k] = v
-		}
-	}
-	return filtered
-}
 
 // Backend implements pipe.VMBackend by executing commands directly on the host.
 // No VM is involved — lifecycle methods satisfy the protocol with instant success.
@@ -227,33 +174,6 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		if v == "" {
 			delete(env, k)
 		}
-	}
-
-	// Filter dangerous env vars from app-provided env
-	env = filterAppEnv(env)
-	if b.debug {
-		for _, d := range dangerousEnvVars {
-			log.Printf("[native] env filter: stripped %s (if present)", d)
-		}
-	}
-
-	// Strip --add-dir / --plugin-dir args pointing to non-existent paths
-	{
-		cleaned := make([]string, 0, len(args))
-		for i := 0; i < len(args); i++ {
-			if (args[i] == "--add-dir" || args[i] == "--plugin-dir") && i+1 < len(args) {
-				dirPath := args[i+1]
-				if _, err := os.Stat(dirPath); err != nil {
-					if b.debug {
-						log.Printf("[native] stripped %s %s (path does not exist)", args[i], dirPath)
-					}
-					i++ // skip the value too
-					continue
-				}
-			}
-			cleaned = append(cleaned, args[i])
-		}
-		args = cleaned
 	}
 
 	// Strip --mcp-config with sdk-type servers — we can't provide them

@@ -94,13 +94,13 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 	if cwd != "" {
 		c.Dir = cwd
 	}
-
-	// Build environment from scratch: filtered daemon env + app env + TERM
-	c.Env = filterDaemonEnv()
-	for k, v := range env {
-		c.Env = append(c.Env, k+"="+v)
+	if len(env) > 0 {
+		// Start with current environment and overlay requested vars
+		c.Env = c.Environ()
+		for k, v := range env {
+			c.Env = append(c.Env, k+"="+v)
+		}
 	}
-	c.Env = append(c.Env, "TERM=xterm-256color")
 
 	// Set up process group so we can kill children too
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

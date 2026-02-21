@@ -11,12 +11,13 @@ All notable changes to claude-cowork-service will be documented in this file.
 - **CI: RPM build/test** — Fedora container builds, installs, and verifies the `.rpm` before release
 - **CI: Nix build** — Validates `nix build` succeeds in the build job
 
+### Fixed
+- Revert env var filtering that stripped `CLAUDE_CODE_OAUTH_TOKEN` from app-provided
+  environment, causing "Not logged in" errors in Cowork sessions.
+
 ## 1.0.4 — 2026-02-21
 
 ### Fixed
-- Spawn: filter dangerous env vars (`CLAUDECODE`, `ELECTRON_*`, `CLAUDE_CODE_*`) from both daemon and app-provided environments to prevent "cannot be launched inside another session" errors.
-- Spawn: strip `--add-dir` / `--plugin-dir` args pointing to non-existent paths after remapping.
-- Process: build spawned process environment from scratch (filtered daemon env + app env + TERM) instead of inheriting full daemon environment.
 - CI: fix release title showing "vv1.0.x" (double "v") — `github.ref_name` already includes the `v` prefix.
 
 ## 1.0.3 — 2026-02-19
