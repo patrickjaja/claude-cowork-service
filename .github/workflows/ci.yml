@@ -147,6 +147,7 @@ jobs:
         id: rpm
         run: |
           VERSION="${RELEASE_VERSION#v}"
+          mkdir -p rpm-out
           docker run --rm \
             -v "$(pwd):/build:ro" \
             -v "$(pwd)/rpm-out:/output" \
@@ -158,6 +159,7 @@ jobs:
               cd /output
               bash /build/packaging/rpm/build-rpm.sh /tmp/cowork-svc-linux $VERSION
             "
+          sudo chown -R $(id -u):$(id -g) rpm-out
           RPM_FILE=$(ls rpm-out/claude-cowork-service-*.rpm)
           sha256sum "$RPM_FILE" > "${RPM_FILE}.sha256"
           echo "rpm_file=$RPM_FILE" >> $GITHUB_OUTPUT
