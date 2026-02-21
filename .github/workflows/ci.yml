@@ -35,12 +35,14 @@ jobs:
         uses: cachix/install-nix-action@v27
       - name: Build with Nix
         run: |
-          # Compute hash of current checkout and patch package.nix so
-          # fetchFromGitHub is satisfied without fetching from the network.
-          # On tagged releases the hash in package.nix is updated permanently.
-          HASH=$(nix hash path --type sha256 --sri .)
-          sed -i -E "s|hash = \"sha256-[^\"]+\"|hash = \"$HASH\"|" packaging/nix/package.nix
-          nix build .#claude-cowork-service --no-link --print-build-logs
+          # Build using local source instead of fetchFromGitHub.
+          # The flake's package.nix uses fetchFromGitHub for end users;
+          # in CI we override src to the local checkout.
+          nix build --no-link --print-build-logs --impure --expr '
+            (builtins.getFlake (toString ./.)).packages.x86_64-linux.claude-cowork-service.overrideAttrs {
+              src = builtins.path { path = ./.; name = "source"; };
+            }
+          '
 
   release:
     needs: build
