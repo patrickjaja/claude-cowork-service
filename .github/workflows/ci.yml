@@ -65,6 +65,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          cache: false
 
       - name: Vet
         run: go vet ./...
@@ -106,6 +107,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          cache: false
 
       - name: Build release binary
         run: make VERSION=${GITHUB_REF_NAME#v}
