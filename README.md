@@ -242,6 +242,10 @@ print(json.loads(sock.recv(length)))
 "
 ```
 
+## See Also
+
+- [tweakcc](https://github.com/Piebald-AI/tweakcc) — A great CLI tool for customizing Claude Code (system prompts, themes, UI). Same patching-JS-to-make-it-yours energy. Thanks to the Piebald team for their work.
+
 ## License
 
 MIT
