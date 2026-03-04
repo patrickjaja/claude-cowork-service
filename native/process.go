@@ -63,40 +63,73 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 		pt.mu.Unlock()
 	}
 
-	// If the given path doesn't exist, try to find it in PATH
+	// If the given path doesn't exist, try to find it in PATH.
+	// Systemd services have minimal PATH (/usr/local/bin:/usr/bin), so we use
+	// a multi-stage fallback to locate binaries installed in user-specific locations
+	// (npm global, ~/.local/bin, nvm, etc.).
 	if _, err := os.Stat(cmd); err != nil {
-		if resolved, lookErr := exec.LookPath(filepath.Base(cmd)); lookErr == nil {
+		base := filepath.Base(cmd)
+		resolved := ""
+
+		// Stage 1: exec.LookPath — checks current process PATH
+		if r, lookErr := exec.LookPath(base); lookErr == nil {
+			resolved = r
+		}
+
+		// Stage 2: login shell — bash -lc loads ~/.bash_profile / ~/.profile
+		if resolved == "" {
+			if out, err := exec.Command("bash", "-lc", "which "+base).Output(); err == nil {
+				r := filepath.Clean(string(bytes.TrimSpace(out)))
+				if _, err := os.Stat(r); err == nil {
+					resolved = r
+				}
+			}
+		}
+
+		// Stage 3: interactive login shell — loads ~/.bashrc too (PATH additions
+		// are often in .bashrc behind an interactive guard: [[ $- != *i* ]] && return).
+		// Output may include shell init noise (fastfetch, motd, etc.), so we parse
+		// all lines for an absolute path that exists on disk.
+		if resolved == "" {
+			shell := os.Getenv("SHELL")
+			if shell == "" {
+				shell = "bash"
+			}
+			if out, err := exec.Command(shell, "-lic", "command -v "+base).Output(); err == nil {
+				for _, line := range strings.Split(string(out), "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "/") && !strings.ContainsAny(line, " \t") {
+						if _, err := os.Stat(line); err == nil {
+							resolved = line
+						}
+					}
+				}
+			}
+		}
+
+		// Stage 4: hardcoded common locations
+		if resolved == "" {
+			home := os.Getenv("HOME")
+			for _, candidate := range []string{
+				filepath.Join(home, ".local", "bin", base),
+				filepath.Join(home, ".npm-global", "bin", base),
+				"/usr/local/bin/" + base,
+				"/usr/bin/" + base,
+			} {
+				if _, statErr := os.Stat(candidate); statErr == nil {
+					resolved = candidate
+					break
+				}
+			}
+		}
+
+		if resolved != "" {
 			if pt.debug {
 				log.Printf("[native] resolved %s → %s", cmd, resolved)
 			}
 			cmd = resolved
-		} else {
-			// Fallback: use login shell to resolve via user's full PATH
-			// (systemd services have minimal PATH, missing ~/.local/bin, npm global, nvm, etc.)
-			base := filepath.Base(cmd)
-			if out, whichErr := exec.Command("bash", "-lc", "which "+base).Output(); whichErr == nil {
-				resolved := filepath.Clean(string(bytes.TrimSpace(out)))
-				if pt.debug {
-					log.Printf("[native] shell resolved %s → %s", cmd, resolved)
-				}
-				cmd = resolved
-			} else {
-				// Last resort: check a few common locations
-				home := os.Getenv("HOME")
-				for _, candidate := range []string{
-					filepath.Join(home, ".local", "bin", base),
-					"/usr/local/bin/" + base,
-					"/usr/bin/" + base,
-				} {
-					if _, statErr := os.Stat(candidate); statErr == nil {
-						if pt.debug {
-							log.Printf("[native] fallback resolved %s → %s", cmd, candidate)
-						}
-						cmd = candidate
-						break
-					}
-				}
-			}
+		} else if pt.debug {
+			log.Printf("[native] WARNING: could not resolve %s in any fallback stage", cmd)
 		}
 	}
 

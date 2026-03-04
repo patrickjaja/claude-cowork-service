@@ -6,6 +6,9 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## 1.0.9 — 2026-02-26
 
+### Fixed
+- **Binary PATH resolution** — Add interactive login shell fallback (`$SHELL -lic`) to resolve binaries when `bash -lc` misses PATH entries set in `.bashrc` behind interactive guards; also add `~/.npm-global/bin` to hardcoded fallback paths; fixes "Failed to sample" error in Cowork sessions when `claude` is installed via npm global
+
 ## 1.0.8 — 2026-02-25
 
 ## 1.0.7 — 2026-02-24
