@@ -1,14 +1,14 @@
 Package: claude-cowork-service
-Version: 1.0.10
+Version: 1.0.11
 Architecture: amd64
 Maintainer: Patrick Jaja <patrick@jaja.dev>
 Recommends: systemd
 Provides: claude-cowork-service
-Filename: amd64/claude-cowork-service_1.0.10_amd64.deb
-Size: 2303262
-MD5sum: fcbb86a9a77baab8d6aba860dd59f6cb
-SHA1: 0471f460b34b4794b1e250ada809d8a346d63dbe
-SHA256: 0d75f2ab315a562803d1812bae7ebcb1e5f7fbcd4131347caaa3976598ef3413
+Filename: amd64/claude-cowork-service_1.0.11_amd64.deb
+Size: 2303716
+MD5sum: c0d39f976290b248ffd8b892d40bec0e
+SHA1: 35c2ae7208e1ff7725c5f04744d5cd20d97dc3d0
+SHA256: 340331e06c092aa5658967beba0fe7b6c1469d4b1be498b69f43985bc15f451b
 Section: utils
 Priority: optional
 Homepage: https://github.com/patrickjaja/claude-cowork-service
