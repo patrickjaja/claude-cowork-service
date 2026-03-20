@@ -122,6 +122,15 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 
 	for mountName, relPath := range mounts {
 		hostPath := filepath.Join(home, relPath)
+		// Skip mounts whose target is not a directory (e.g. app.asar).
+		// Claude Desktop passes every mount as --add-dir to the CLI,
+		// which rejects non-directory paths.
+		if info, err := os.Stat(hostPath); err == nil && !info.IsDir() {
+			if b.debug {
+				log.Printf("[native] skip non-directory mount: %s → %s", mountName, hostPath)
+			}
+			continue
+		}
 		os.MkdirAll(hostPath, 0755)
 		linkPath := filepath.Join(mntDir, mountName)
 		os.Remove(linkPath)
