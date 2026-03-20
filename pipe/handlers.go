@@ -76,7 +76,7 @@ func (h *Handler) Handle(conn net.Conn, payload []byte) {
 		if h.debug {
 			log.Printf("RPC: unknown method %q — returning success (passthrough)", req.Method)
 		}
-		WriteResponse(conn, nil)
+		WriteResponse(conn, req.ID, nil)
 	}
 }
 
@@ -162,7 +162,7 @@ func (h *Handler) handleConfigure(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleCreateVM(conn net.Conn, req Request) {
@@ -180,7 +180,7 @@ func (h *Handler) handleCreateVM(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleStartVM(conn net.Conn, req Request) {
@@ -198,7 +198,7 @@ func (h *Handler) handleStartVM(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleStopVM(conn net.Conn, req Request) {
@@ -211,7 +211,7 @@ func (h *Handler) handleStopVM(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleIsRunning(conn net.Conn, req Request) {
@@ -224,7 +224,7 @@ func (h *Handler) handleIsRunning(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, map[string]bool{"running": running})
+	WriteResponse(conn, req.ID, map[string]bool{"running": running})
 }
 
 func (h *Handler) handleIsGuestConnected(conn net.Conn, req Request) {
@@ -237,7 +237,7 @@ func (h *Handler) handleIsGuestConnected(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, map[string]bool{"connected": connected})
+	WriteResponse(conn, req.ID, map[string]bool{"connected": connected})
 }
 
 func (h *Handler) handleSpawn(conn net.Conn, req Request) {
@@ -262,7 +262,7 @@ func (h *Handler) handleSpawn(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, map[string]string{"id": processID})
+	WriteResponse(conn, req.ID, map[string]string{"id": processID})
 }
 
 func (h *Handler) handleKill(conn net.Conn, req Request) {
@@ -275,7 +275,7 @@ func (h *Handler) handleKill(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleWriteStdin(conn net.Conn, req Request) {
@@ -300,7 +300,7 @@ func (h *Handler) handleWriteStdin(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleIsProcessRunning(conn net.Conn, req Request) {
@@ -314,7 +314,7 @@ func (h *Handler) handleIsProcessRunning(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, map[string]bool{"running": running})
+	WriteResponse(conn, req.ID, map[string]bool{"running": running})
 }
 
 func (h *Handler) handleMountPath(conn net.Conn, req Request) {
@@ -327,7 +327,7 @@ func (h *Handler) handleMountPath(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleReadFile(conn net.Conn, req Request) {
@@ -341,7 +341,7 @@ func (h *Handler) handleReadFile(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, map[string]interface{}{"data": string(data)})
+	WriteResponse(conn, req.ID, map[string]interface{}{"data": string(data)})
 }
 
 func (h *Handler) handleInstallSdk(conn net.Conn, req Request) {
@@ -354,7 +354,7 @@ func (h *Handler) handleInstallSdk(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleAddApprovedOauthToken(conn net.Conn, req Request) {
@@ -367,7 +367,7 @@ func (h *Handler) handleAddApprovedOauthToken(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleSetDebugLogging(conn net.Conn, req Request) {
@@ -378,11 +378,11 @@ func (h *Handler) handleSetDebugLogging(conn net.Conn, req Request) {
 	}
 	h.backend.SetDebugLogging(p.Enabled)
 	h.debug = p.Enabled
-	WriteResponse(conn, nil)
+	WriteResponse(conn, req.ID, nil)
 }
 
 func (h *Handler) handleIsDebugLoggingEnabled(conn net.Conn, req Request) {
-	WriteResponse(conn, map[string]bool{"enabled": h.debug})
+	WriteResponse(conn, req.ID, map[string]bool{"enabled": h.debug})
 }
 
 func (h *Handler) handleSubscribeEvents(conn net.Conn, req Request) {
@@ -430,7 +430,7 @@ func (h *Handler) handleSubscribeEvents(conn net.Conn, req Request) {
 	}
 
 	// Send initial ack
-	WriteResponse(conn, map[string]bool{"subscribed": true})
+	WriteResponse(conn, req.ID, map[string]bool{"subscribed": true})
 
 	// Block until connection closes (events are pushed via callback)
 	// When connection drops, ReadMessage will fail and we cancel
@@ -444,5 +444,5 @@ func (h *Handler) handleSubscribeEvents(conn net.Conn, req Request) {
 
 func (h *Handler) handleGetDownloadStatus(conn net.Conn, req Request) {
 	status := h.backend.GetDownloadStatus()
-	WriteResponse(conn, map[string]string{"status": status})
+	WriteResponse(conn, req.ID, map[string]string{"status": status})
 }

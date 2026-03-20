@@ -23,6 +23,7 @@ type Request struct {
 type Response struct {
 	Success bool        `json:"success"`
 	Result  interface{} `json:"result,omitempty"`
+	ID      interface{} `json:"id,omitempty"`
 	Error   string      `json:"error,omitempty"`
 }
 
@@ -63,9 +64,10 @@ func WriteMessage(conn net.Conn, data []byte) error {
 }
 
 // WriteResponse serializes and sends a success Response.
-func WriteResponse(conn net.Conn, result interface{}) error {
+func WriteResponse(conn net.Conn, id interface{}, result interface{}) error {
 	resp := Response{
 		Success: true,
+		ID:      id,
 		Result:  result,
 	}
 	data, err := json.Marshal(resp)
@@ -79,6 +81,7 @@ func WriteResponse(conn net.Conn, result interface{}) error {
 func WriteError(conn net.Conn, id interface{}, code int, message string) error {
 	resp := Response{
 		Success: false,
+		ID:      id,
 		Error:   message,
 	}
 	data, err := json.Marshal(resp)
