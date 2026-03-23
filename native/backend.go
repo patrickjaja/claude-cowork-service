@@ -110,6 +110,17 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		log.Printf("[native] spawn: %s %v (cwd=%s, mounts=%v)", cmd, args, cwd, mounts)
 	}
 
+	// Log dispatch-critical env vars and tool args for debugging
+	log.Printf("[native] DISPATCH-DEBUG: CLAUDE_CODE_BRIEF=%q", env["CLAUDE_CODE_BRIEF"])
+	for i, a := range args {
+		if a == "--tools" && i+1 < len(args) {
+			log.Printf("[native] DISPATCH-DEBUG: --tools=%s", args[i+1])
+		}
+		if a == "--allowedTools" && i+1 < len(args) {
+			log.Printf("[native] DISPATCH-DEBUG: --allowedTools=%s", args[i+1])
+		}
+	}
+
 	// The client sends VM paths like /sessions/<name>/mnt/<mount>.
 	// We create these under ~/.local/share/claude-cowork/sessions/ and
 	// symlink /sessions/<name> → there so the absolute paths work.
@@ -223,6 +234,8 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		}
 	}
 
+
+
 	// Strip --mcp-config with sdk-type servers — we can't provide them
 	// as they require the parent to proxy stdio connections.
 	// Replace the config with an empty one so Claude Code starts without blocking.
@@ -233,6 +246,49 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 				log.Printf("[native] stripped sdk MCP servers from --mcp-config")
 			}
 			break
+		}
+	}
+
+	// Remove present_files from --disallowedTools.
+	// On Mac/Windows, file sharing goes through SendUserMessage with attachments,
+	// so Electron blocks present_files. On Linux native, SendUserMessage isn't
+	// reliably available (CLI timing bug), so the model falls back to present_files.
+	// Without this fix, the model gets "Permission denied" when trying to share files.
+	for i, a := range args {
+		if a == "--disallowedTools" && i+1 < len(args) {
+			tools := strings.Split(args[i+1], ",")
+			var filtered []string
+			for _, t := range tools {
+				if t != "mcp__cowork__present_files" {
+					filtered = append(filtered, t)
+				}
+			}
+			if len(filtered) != len(tools) {
+				args[i+1] = strings.Join(filtered, ",")
+				if b.debug {
+					log.Printf("[native] removed present_files from --disallowedTools")
+				}
+			}
+			break
+		}
+	}
+
+	// Inject --brief flag to maximize SendUserMessage availability.
+	// Belt-and-suspenders: Electron sets CLAUDE_CODE_BRIEF=1 in env,
+	// but the CLI also accepts --brief as a direct flag.
+	if env["CLAUDE_CODE_BRIEF"] == "1" {
+		hasBrief := false
+		for _, a := range args {
+			if a == "--brief" {
+				hasBrief = true
+				break
+			}
+		}
+		if !hasBrief {
+			args = append(args, "--brief")
+			if b.debug {
+				log.Printf("[native] injected --brief flag (CLAUDE_CODE_BRIEF=1)")
+			}
 		}
 	}
 
