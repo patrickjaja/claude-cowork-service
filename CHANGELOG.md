@@ -4,6 +4,8 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+## 1.0.15 — 2026-03-23
+
 ### Added
 - **`--brief` flag injection** — Inject `--brief` CLI flag when `CLAUDE_CODE_BRIEF=1` is in env (redundant safety measure for SendUserMessage availability)
 - **Dispatch debug logging** — Log `CLAUDE_CODE_BRIEF`, `--tools`, and `--allowedTools` at spawn time for dispatch debugging
