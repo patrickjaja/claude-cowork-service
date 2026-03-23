@@ -9,3 +9,5 @@ src/
 result
 cowork-svc.exe
 .cowork-svc-version
+bin/
+vm-bundle/

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Extract cowork-svc.exe from the latest Claude Desktop Windows installer
+# Extract all binaries from the latest Claude Desktop Windows installer
 #
-# Downloads the installer, extracts the nupkg, and copies cowork-svc.exe
-# into the project root for reverse engineering / comparison.
+# Downloads the installer, extracts the nupkg, and copies all files
+# from the cowork-svc.exe directory level into bin/ for reverse engineering.
 #
 # Usage: ./scripts/extract-cowork-svc.sh
 #
@@ -12,8 +12,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-OUTPUT_FILE="$PROJECT_DIR/cowork-svc.exe"
-VERSION_FILE="$PROJECT_DIR/.cowork-svc-version"
+OUTPUT_DIR="$PROJECT_DIR/bin"
+VERSION_FILE="$OUTPUT_DIR/.version"
 
 VERSION_API="https://downloads.claude.ai/releases/win32/x64/.latest"
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -79,10 +79,10 @@ info "Latest version: $LATEST_VERSION"
 
 # --- Idempotency check ---
 
-if [ -f "$OUTPUT_FILE" ] && [ -f "$VERSION_FILE" ]; then
+if [ -d "$OUTPUT_DIR" ] && [ -f "$VERSION_FILE" ]; then
     CURRENT_VERSION=$(cat "$VERSION_FILE")
     if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
-        ok "cowork-svc.exe is already at version $LATEST_VERSION — nothing to do."
+        ok "bin/ is already at version $LATEST_VERSION — nothing to do."
         exit 0
     fi
     info "Upgrading from $CURRENT_VERSION to $LATEST_VERSION"
@@ -122,7 +122,7 @@ NUPKG=$(find "$TMPDIR_WORK/extract" -maxdepth 1 -name "AnthropicClaude-*.nupkg" 
 
 7z x -y "$NUPKG" -o"$TMPDIR_WORK/nupkg" >/dev/null 2>&1
 
-# --- Find and copy cowork-svc.exe ---
+# --- Find cowork-svc.exe and copy all files from its directory ---
 
 COWORK_SVC="$TMPDIR_WORK/nupkg/lib/net45/cowork-svc.exe"
 
@@ -132,7 +132,24 @@ if [ ! -f "$COWORK_SVC" ]; then
     [ -n "$COWORK_SVC" ] || die "cowork-svc.exe not found in nupkg"
 fi
 
-cp "$COWORK_SVC" "$OUTPUT_FILE"
+BIN_SOURCE_DIR="$(dirname "$COWORK_SVC")"
+
+info "Found binaries in: $BIN_SOURCE_DIR"
+info "Files at this level:"
+find "$BIN_SOURCE_DIR" -maxdepth 1 -type f -exec ls -lh {} + 2>/dev/null | while read -r line; do
+    info "  $line"
+done || true
+
+# Create output dir and copy all files from the same level
+mkdir -p "$OUTPUT_DIR"
+rm -rf "$OUTPUT_DIR"/*
+
+# Copy all files (not subdirectories) from the cowork-svc.exe directory
+find "$BIN_SOURCE_DIR" -maxdepth 1 -type f -exec cp {} "$OUTPUT_DIR/" \;
+
+FILE_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f | wc -l)
 echo "$LATEST_VERSION" > "$VERSION_FILE"
 
-ok "Extracted cowork-svc.exe (version $LATEST_VERSION) to project root"
+ok "Extracted $FILE_COUNT files (version $LATEST_VERSION) to bin/"
+info "Contents:"
+ls -lh "$OUTPUT_DIR" | tail -n +2
