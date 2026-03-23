@@ -273,6 +273,11 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 // streamOutput reads lines from a reader and emits events.
 // Claude Code sends its stream-json output on stderr, so we emit both
 // stdout and stderr data as "stdout" events — that's what the client reads.
+//
+// When -keep-mcp-config is active, this also detects control_request messages
+// from the CLI (used for SDK MCP server communication). These are logged for
+// debugging but still emitted as stdout events — Claude Desktop's session
+// manager is expected to intercept and handle them (same as in VM mode).
 func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 	// Look up process for reverse path mapping
 	pt.mu.RLock()
@@ -288,12 +293,17 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 		if lp != nil && lp.reverseMap {
 			line = string(bytes.ReplaceAll([]byte(line), lp.realPrefix, lp.vmPrefix))
 		}
+
+		// Detect MCP control_request messages from the CLI.
+		// These are JSON lines with "type":"control_request" that the CLI sends
+		// when it needs to call an SDK MCP server tool. Log them prominently
+		// so we can observe the MCP proxy flow during the experiment.
+		if strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`) {
+			log.Printf("[native] >>>MCP-PROXY>>> %s %s control_request detected: %s", id, stream, truncateLine(line, 500))
+		}
+
 		if pt.debug {
-			truncated := line
-			maxLen := 2000
-			if len(truncated) > maxLen {
-				truncated = truncated[:maxLen] + "...[TRUNCATED]"
-			}
+			truncated := truncateLine(line, 2000)
 			// Highlight skill-related messages
 			if strings.Contains(strings.ToLower(line), "skill") || strings.Contains(line, "Unknown") {
 				log.Printf("[native] !!SKILL!! %s %s: %s", id, stream, truncated)
@@ -310,6 +320,14 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 		log.Printf("[native] %s %s scanner error: %v", id, stream, err)
 		pt.emit(process.NewErrorEvent(id, fmt.Sprintf("%s scanner error: %v", stream, err), false))
 	}
+}
+
+// truncateLine truncates a string to maxLen characters for logging.
+func truncateLine(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen] + "...[TRUNCATED]"
+	}
+	return s
 }
 
 // kill sends a signal to a process. If signal is empty, defaults to SIGTERM.
@@ -408,6 +426,19 @@ func (pt *processTracker) writeStdin(processID string, data []byte) error {
 	// the real target paths instead of symlinked mnt/ paths.
 	for _, rm := range lp.mountRemap {
 		data = bytes.ReplaceAll(data, rm.from, rm.to)
+	}
+
+	// Detect MCP control_response messages from Claude Desktop.
+	// These are JSON objects with "type":"control_response" sent by Desktop's
+	// session manager in response to control_request messages from the CLI.
+	// Log them prominently to observe the MCP proxy flow during the experiment.
+	if bytes.Contains(data, []byte(`"type":"control_response"`)) || bytes.Contains(data, []byte(`"type": "control_response"`)) {
+		log.Printf("[native] <<<MCP-PROXY<<< %s control_response detected: %s", processID, truncateLine(string(data), 500))
+	}
+
+	// Also detect initialize messages that may contain sdkMcpServers
+	if bytes.Contains(data, []byte(`sdkMcpServers`)) {
+		log.Printf("[native] <<<MCP-INIT<<< %s sdkMcpServers in writeStdin: %s", processID, truncateLine(string(data), 1000))
 	}
 
 	// Strip plugin prefix from skill invocations in user messages.

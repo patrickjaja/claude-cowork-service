@@ -165,9 +165,9 @@ The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` and handles 18 R
 2. Daemon emits `vmStarted` and `apiReachability` events
 3. Claude Desktop calls `spawn` with `/usr/local/bin/claude` and OAuth credentials
 4. Daemon remaps the path, resolves the binary, starts `claude` via `os/exec`
-5. Claude Desktop sends `writeStdin` with an `initialize` control request, then user messages
-6. Daemon intercepts and strips `sdkMcpServers` from the initialize request to prevent blocking
-7. Claude Code's `stream-json` output (on stderr) is emitted as stdout events back to Claude Desktop
+5. Claude Desktop sends `writeStdin` with an `initialize` control request (including `sdkMcpServers`), then user messages
+6. Claude Code's `stream-json` output (on stderr) is emitted as stdout events back to Claude Desktop
+7. SDK MCP tool calls use `control_request`/`control_response` messages embedded in the stdout/stdin streams — Desktop's session manager handles the bidirectional proxy automatically (identical to VM mode)
 8. The UI shows the streamed response in real-time
 
 ### Path remapping
@@ -223,9 +223,9 @@ During reverse engineering, we found 12 mismatches between the documented/expect
 | 6 | Client needs `apiReachability` event (not just `isGuestConnected`) | Client stuck after boot | Emit `apiReachability` during startVM |
 | 7 | Args also contain VM paths (not just cwd/env) | `--plugin-dir /sessions/...` unresolvable | Remap args too |
 | 8 | Empty env vars (`ANTHROPIC_API_KEY=""`) break auth | Valid OAuth token ignored | Strip empty env vars |
-| 9 | `sdkMcpServers` in MCP config blocks Claude Code | Process hangs at init — zero output | Strip SDK servers from config |
+| 9 | `sdkMcpServers` in MCP config blocks Claude Code | Process hangs at init — zero output | ~~Strip SDK servers from config~~ **RESOLVED**: was caused by other bugs (#3, #4, #8); SDK servers now pass through and work via event-stream MCP proxy |
 | 10 | Claude Code outputs stream-json on stderr, not stdout | Captured stdout was empty | Emit stderr as stdout events |
-| 11 | MCP proxy requests block Claude Code | Process hangs mid-conversation | Auto-respond with error to unblock |
+| 11 | MCP proxy requests block Claude Code | Process hangs mid-conversation | ~~Auto-respond with error~~ **RESOLVED**: Desktop's session manager handles `control_request`/`control_response` over the event stream natively |
 | 12 | Event field is `"id"` not `"processId"` | Events ignored, UI stuck on "Starting up..." | Fixed event JSON tags |
 
 ## VM Backend (Dormant)

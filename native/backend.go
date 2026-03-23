@@ -236,40 +236,18 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 
 
 
-	// Strip --mcp-config with sdk-type servers — we can't provide them
-	// as they require the parent to proxy stdio connections.
-	// Replace the config with an empty one so Claude Code starts without blocking.
-	for i, a := range args {
-		if a == "--mcp-config" && i+1 < len(args) {
-			args[i+1] = `{"mcpServers":{}}`
-			if b.debug {
-				log.Printf("[native] stripped sdk MCP servers from --mcp-config")
+	// SDK MCP servers (dispatch, cowork, session_info, etc.) are kept in
+	// --mcp-config as {type:"sdk"} stubs. The CLI sends control_request
+	// messages on stdout for MCP tool calls, which flow through our event
+	// stream to Claude Desktop. Desktop's session manager handles them and
+	// sends control_response back via writeStdin — identical to VM mode.
+	// No stripping or proxying needed on our side.
+	if b.debug {
+		for i, a := range args {
+			if a == "--mcp-config" && i+1 < len(args) {
+				log.Printf("[native] --mcp-config passed through (SDK MCP proxy via event stream): %s", args[i+1])
+				break
 			}
-			break
-		}
-	}
-
-	// Remove present_files from --disallowedTools.
-	// On Mac/Windows, file sharing goes through SendUserMessage with attachments,
-	// so Electron blocks present_files. On Linux native, SendUserMessage isn't
-	// reliably available (CLI timing bug), so the model falls back to present_files.
-	// Without this fix, the model gets "Permission denied" when trying to share files.
-	for i, a := range args {
-		if a == "--disallowedTools" && i+1 < len(args) {
-			tools := strings.Split(args[i+1], ",")
-			var filtered []string
-			for _, t := range tools {
-				if t != "mcp__cowork__present_files" {
-					filtered = append(filtered, t)
-				}
-			}
-			if len(filtered) != len(tools) {
-				args[i+1] = strings.Join(filtered, ",")
-				if b.debug {
-					log.Printf("[native] removed present_files from --disallowedTools")
-				}
-			}
-			break
 		}
 	}
 

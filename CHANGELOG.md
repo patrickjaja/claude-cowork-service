@@ -4,16 +4,16 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
-## 1.0.15 — 2026-03-23
+### Changed
+- **SDK MCP proxy — pass `--mcp-config` through unchanged** — Stopped stripping SDK MCP servers from `--mcp-config`. Claude Desktop's session manager handles the bidirectional `control_request`/`control_response` MCP proxy over the event stream, identical to VM mode on Mac/Windows. This enables all per-session SDK tools: `mcp__dispatch__send_message`, `mcp__dispatch__start_task`, `mcp__cowork__present_files`, `mcp__session_info__read_transcript`, and more. Verified with 161 control_request/response pairs in test run, zero blocking.
+- **Removed `present_files` disallowedTools workaround** — No longer needed since the SDK MCP proxy gives the model native access to all cowork tools
+- **MCP proxy debug logging** — Detect and log `control_request` (CLI→Desktop) and `control_response` (Desktop→CLI) messages in stdout/stdin streams for observability
 
 ### Added
 - **`--brief` flag injection** — Inject `--brief` CLI flag when `CLAUDE_CODE_BRIEF=1` is in env (redundant safety measure for SendUserMessage availability)
 - **Dispatch debug logging** — Log `CLAUDE_CODE_BRIEF`, `--tools`, and `--allowedTools` at spawn time for dispatch debugging
 
-### Fixed
-- **`present_files` permission denied** — Remove `mcp__cowork__present_files` from `--disallowedTools`; Electron blocks it for dispatch (expects `SendUserMessage` with attachments), but on Linux the model needs it as a fallback for file sharing
-
-## 1.0.14 — 2026-03-23
+## 1.0.15 — 2026-03-23
 
 ### Fixed
 - **ELOOP self-referencing symlink** — Prevent `.mcpb-cache` (and other child mounts) from becoming self-referencing symlinks when a parent mount is already symlinked; fixes `ELOOP: too many symbolic links encountered` on Dispatch/Cowork sessions with remote plugins
