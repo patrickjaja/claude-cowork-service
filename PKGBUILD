@@ -5,7 +5,7 @@ pkgname=claude-cowork-service
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="Native Linux backend for Claude Desktop Cowork"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://github.com/patrickjaja/claude-cowork-service"
 license=('MIT')
 

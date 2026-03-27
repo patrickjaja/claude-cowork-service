@@ -9,7 +9,7 @@ Summary:        Native Linux backend for Claude Desktop's Cowork feature
 License:        MIT
 URL:            https://github.com/patrickjaja/claude-cowork-service
 
-ExclusiveArch:  x86_64
+ExclusiveArch:  x86_64 aarch64
 
 Requires:       systemd
 

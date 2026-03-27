@@ -83,6 +83,9 @@ jobs:
           make clean
           LDFLAGS="-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now" make build
 
+      - name: Cross-compile ARM64
+        run: make build-arm64
+
       - name: Test
         run: go test ./...
 
@@ -142,24 +145,44 @@ jobs:
           git tag -a "${RELEASE_VERSION}" -m "Release ${RELEASE_VERSION}"
           git push origin "${RELEASE_VERSION}"
 
-      - name: Build release binary
+      - name: Set up QEMU for ARM64 testing
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build release binary (x86_64)
         run: make VERSION=${RELEASE_VERSION#v}
 
-      - name: Generate checksums
-        run: sha256sum cowork-svc-linux > cowork-svc-linux.sha256
+      - name: Build release binary (ARM64)
+        run: make build-arm64 VERSION=${RELEASE_VERSION#v}
 
-      - name: Build Debian package
+      - name: Generate checksums
+        run: |
+          sha256sum cowork-svc-linux > cowork-svc-linux.sha256
+          sha256sum cowork-svc-linux-arm64 > cowork-svc-linux-arm64.sha256
+
+      - name: Build Debian package (amd64)
         id: deb
         run: |
           VERSION="${RELEASE_VERSION#v}"
           sudo apt-get install -y dpkg-dev
-          bash packaging/debian/build-deb.sh cowork-svc-linux "$VERSION"
+          bash packaging/debian/build-deb.sh cowork-svc-linux "$VERSION" amd64
           DEB_FILE="claude-cowork-service_${VERSION}_amd64.deb"
           sha256sum "$DEB_FILE" > "${DEB_FILE}.sha256"
           echo "deb_file=$DEB_FILE" >> $GITHUB_OUTPUT
           echo "deb_sha256=$(cut -d' ' -f1 "${DEB_FILE}.sha256")" >> $GITHUB_OUTPUT
 
-      - name: Build RPM package
+      - name: Build Debian package (arm64)
+        id: deb_arm64
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          bash packaging/debian/build-deb.sh cowork-svc-linux-arm64 "$VERSION" arm64
+          DEB_FILE="claude-cowork-service_${VERSION}_arm64.deb"
+          sha256sum "$DEB_FILE" > "${DEB_FILE}.sha256"
+          echo "deb_file=$DEB_FILE" >> $GITHUB_OUTPUT
+          echo "deb_sha256=$(cut -d' ' -f1 "${DEB_FILE}.sha256")" >> $GITHUB_OUTPUT
+
+      - name: Build RPM package (x86_64)
         id: rpm
         run: |
           VERSION="${RELEASE_VERSION#v}"
@@ -173,10 +196,10 @@ jobs:
               dnf install -y rpm-build
               cp /build/cowork-svc-linux /tmp/
               cd /output
-              bash /build/packaging/rpm/build-rpm.sh /tmp/cowork-svc-linux $VERSION
+              bash /build/packaging/rpm/build-rpm.sh /tmp/cowork-svc-linux $VERSION x86_64
             "
           sudo chown -R $(id -u):$(id -g) rpm-out
-          RPM_FILE=$(ls rpm-out/claude-cowork-service-*.rpm)
+          RPM_FILE=$(ls rpm-out/claude-cowork-service-*x86_64.rpm)
           sha256sum "$RPM_FILE" > "${RPM_FILE}.sha256"
           # Create a stable-named copy for predictable download URLs
           cp "$RPM_FILE" "rpm-out/claude-cowork-service-latest.x86_64.rpm"
@@ -185,17 +208,70 @@ jobs:
           echo "rpm_stable=rpm-out/claude-cowork-service-latest.x86_64.rpm" >> $GITHUB_OUTPUT
           echo "rpm_sha256=$(cut -d' ' -f1 "${RPM_FILE}.sha256")" >> $GITHUB_OUTPUT
 
-      - name: Test RPM package
+      - name: Build RPM package (aarch64)
+        id: rpm_arm64
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          mkdir -p rpm-out-arm64
+          docker run --rm \
+            -v "$(pwd):/build:ro" \
+            -v "$(pwd)/rpm-out-arm64:/output" \
+            fedora:40 \
+            bash -c "
+              set -euo pipefail
+              dnf install -y rpm-build
+              cp /build/cowork-svc-linux-arm64 /tmp/cowork-svc-linux
+              cd /output
+              bash /build/packaging/rpm/build-rpm.sh /tmp/cowork-svc-linux $VERSION aarch64
+            "
+          sudo chown -R $(id -u):$(id -g) rpm-out-arm64
+          RPM_FILE=$(ls rpm-out-arm64/claude-cowork-service-*aarch64.rpm)
+          sha256sum "$RPM_FILE" > "${RPM_FILE}.sha256"
+          # Create a stable-named copy for predictable download URLs
+          cp "$RPM_FILE" "rpm-out-arm64/claude-cowork-service-latest.aarch64.rpm"
+          sha256sum "rpm-out-arm64/claude-cowork-service-latest.aarch64.rpm" > "rpm-out-arm64/claude-cowork-service-latest.aarch64.rpm.sha256"
+          echo "rpm_file=$RPM_FILE" >> $GITHUB_OUTPUT
+          echo "rpm_stable=rpm-out-arm64/claude-cowork-service-latest.aarch64.rpm" >> $GITHUB_OUTPUT
+          echo "rpm_sha256=$(cut -d' ' -f1 "${RPM_FILE}.sha256")" >> $GITHUB_OUTPUT
+
+      - name: Test RPM package (x86_64)
         run: |
           docker run --rm \
             -v "$(pwd)/rpm-out:/dist:ro" \
             fedora:40 \
             bash -c "
               set -e
-              dnf install -y /dist/claude-cowork-service-*.rpm
+              dnf install -y /dist/claude-cowork-service-*x86_64.rpm
               cowork-svc-linux -version
               test -f /usr/lib/systemd/user/claude-cowork.service
-              echo 'RPM test passed'
+              echo 'RPM x86_64 test passed'
+            "
+
+      - name: Test RPM package (aarch64)
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "$(pwd)/rpm-out-arm64:/dist:ro" \
+            arm64v8/fedora:40 \
+            bash -c "
+              set -e
+              dnf install -y /dist/claude-cowork-service-*aarch64.rpm
+              cowork-svc-linux -version
+              test -f /usr/lib/systemd/user/claude-cowork.service
+              echo 'RPM aarch64 test passed'
+            "
+
+      - name: Test Debian package (arm64)
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "$(pwd):/dist:ro" \
+            arm64v8/ubuntu:22.04 \
+            bash -c "
+              set -e
+              apt-get update
+              apt-get install -y /dist/claude-cowork-service_*_arm64.deb
+              cowork-svc-linux -version
+              test -f /usr/lib/systemd/user/claude-cowork.service
+              echo 'DEB arm64 test passed'
             "
 
       - name: Extract changelog
@@ -220,26 +296,37 @@ jobs:
           files: |
             cowork-svc-linux
             cowork-svc-linux.sha256
+            cowork-svc-linux-arm64
+            cowork-svc-linux-arm64.sha256
             ${{ steps.deb.outputs.deb_file }}
             ${{ steps.deb.outputs.deb_file }}.sha256
+            ${{ steps.deb_arm64.outputs.deb_file }}
+            ${{ steps.deb_arm64.outputs.deb_file }}.sha256
             ${{ steps.rpm.outputs.rpm_file }}
             ${{ steps.rpm.outputs.rpm_file }}.sha256
             ${{ steps.rpm.outputs.rpm_stable }}
             ${{ steps.rpm.outputs.rpm_stable }}.sha256
+            ${{ steps.rpm_arm64.outputs.rpm_file }}
+            ${{ steps.rpm_arm64.outputs.rpm_file }}.sha256
+            ${{ steps.rpm_arm64.outputs.rpm_stable }}
+            ${{ steps.rpm_arm64.outputs.rpm_stable }}.sha256
           body: |
             ${{ steps.changelog.outputs.content }}
 
             ### Install
 
-            **Debian / Ubuntu (APT):**
+            **Debian / Ubuntu (APT):** (x86_64 and ARM64)
             ```
             curl -fsSL https://patrickjaja.github.io/claude-cowork-service/install.sh | sudo bash
             sudo apt install claude-cowork-service
             ```
 
             **Fedora / RHEL (.rpm):**
-            ```
+            ```bash
+            # x86_64
             sudo dnf install https://github.com/patrickjaja/claude-cowork-service/releases/latest/download/claude-cowork-service-latest.x86_64.rpm
+            # aarch64
+            sudo dnf install https://github.com/patrickjaja/claude-cowork-service/releases/latest/download/claude-cowork-service-latest.aarch64.rpm
             ```
 
             **NixOS:**
@@ -251,7 +338,7 @@ jobs:
 
             **Arch Linux (AUR):** `yay -S claude-cowork-service`
 
-            **Any distro:** `curl -fsSL .../scripts/install.sh | bash`
+            **Any distro (auto-detects arch):** `curl -fsSL .../scripts/install.sh | bash`
 
       - name: Update and Deploy APT + RPM Repositories
         env:
@@ -260,7 +347,9 @@ jobs:
         run: |
           VERSION="${RELEASE_VERSION#v}"
           DEB_FILE="$(pwd)/${{ steps.deb.outputs.deb_file }}"
+          DEB_ARM64_FILE="$(pwd)/${{ steps.deb_arm64.outputs.deb_file }}"
           RPM_FILE="$(pwd)/${{ steps.rpm.outputs.rpm_file }}"
+          RPM_ARM64_FILE="$(pwd)/${{ steps.rpm_arm64.outputs.rpm_file }}"
 
           if [ ! -f "$DEB_FILE" ] && [ ! -f "$RPM_FILE" ]; then
             echo "::warning::No .deb or .rpm files found — skipping repo deploy"
@@ -299,18 +388,28 @@ jobs:
           gpg --armor --export "$GPG_KEY_ID" > "$PAGES_DIR/gpg-key.asc"
           touch "$PAGES_DIR/.nojekyll"
 
-          # Build APT repo metadata
+          # Build APT repo metadata (amd64 + arm64)
           if [ -f "$DEB_FILE" ]; then
-            bash packaging/apt/update-apt-repo.sh "$DEB_FILE" "$PAGES_DIR" "$GPG_KEY_ID"
+            bash packaging/apt/update-apt-repo.sh "$DEB_FILE" "$PAGES_DIR" "$GPG_KEY_ID" amd64
           else
-            echo "::warning::No .deb file — skipping APT repo update"
+            echo "::warning::No amd64 .deb file — skipping APT amd64 update"
+          fi
+          if [ -f "$DEB_ARM64_FILE" ]; then
+            bash packaging/apt/update-apt-repo.sh "$DEB_ARM64_FILE" "$PAGES_DIR" "$GPG_KEY_ID" arm64
+          else
+            echo "::warning::No arm64 .deb file — skipping APT arm64 update"
           fi
 
-          # Build RPM repo metadata
+          # Build RPM repo metadata (x86_64 + aarch64)
           if [ -f "$RPM_FILE" ]; then
-            bash packaging/rpm/update-rpm-repo.sh "$RPM_FILE" "$PAGES_DIR" "$GPG_KEY_ID"
+            bash packaging/rpm/update-rpm-repo.sh "$RPM_FILE" "$PAGES_DIR" "$GPG_KEY_ID" x86_64
           else
-            echo "::warning::No .rpm file — skipping RPM repo update"
+            echo "::warning::No x86_64 .rpm file — skipping RPM x86_64 update"
+          fi
+          if [ -f "$RPM_ARM64_FILE" ]; then
+            bash packaging/rpm/update-rpm-repo.sh "$RPM_ARM64_FILE" "$PAGES_DIR" "$GPG_KEY_ID" aarch64
+          else
+            echo "::warning::No aarch64 .rpm file — skipping RPM aarch64 update"
           fi
 
           # Commit and push
@@ -319,7 +418,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --staged --quiet || {
-            git commit -m "Update APT + RPM repos: claude-cowork-service ${VERSION}"
+            git commit -m "Update APT + RPM repos: claude-cowork-service ${VERSION} (amd64 + arm64)"
             git push origin gh-pages
           }
 

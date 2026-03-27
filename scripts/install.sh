@@ -13,6 +13,7 @@ set -euo pipefail
 REPO="patrickjaja/claude-cowork-service"
 BINARY_NAME="cowork-svc-linux"
 SERVICE_NAME="claude-cowork"
+DOWNLOAD_NAME=""  # set by arch detection below
 
 # Colors (disabled if not a terminal)
 if [ -t 1 ]; then
@@ -113,7 +114,12 @@ fi
 # --- Pre-flight checks ---
 
 ARCH="$(uname -m)"
-[ "$ARCH" = "x86_64" ] || die "Only x86_64 is supported (detected: $ARCH)"
+case "$ARCH" in
+    x86_64)  DOWNLOAD_NAME="cowork-svc-linux" ;;
+    aarch64) DOWNLOAD_NAME="cowork-svc-linux-arm64" ;;
+    *) die "Unsupported architecture: $ARCH (supported: x86_64, aarch64)" ;;
+esac
+info "Detected architecture: $ARCH (downloading $DOWNLOAD_NAME)"
 
 command -v systemctl >/dev/null 2>&1 || die "systemd is required (systemctl not found)"
 
@@ -146,7 +152,7 @@ VERSION="${RELEASE_URL##*/}"
 [ -n "$VERSION" ] || die "Could not determine latest version"
 info "Latest version: $VERSION"
 
-DOWNLOAD_URL="https://github.com/$REPO/releases/download/$VERSION/$BINARY_NAME"
+DOWNLOAD_URL="https://github.com/$REPO/releases/download/$VERSION/$DOWNLOAD_NAME"
 
 # --- Download binary ---
 
@@ -155,7 +161,7 @@ trap 'rm -rf "$TMPDIR_INSTALL"' EXIT
 
 TMPFILE="$TMPDIR_INSTALL/$BINARY_NAME"
 
-info "Downloading $BINARY_NAME $VERSION..."
+info "Downloading $DOWNLOAD_NAME $VERSION..."
 if [ "$FETCH" = "curl" ]; then
     curl -fSL --progress-bar -o "$TMPFILE" "$DOWNLOAD_URL" || die "Download failed"
 else
@@ -163,7 +169,7 @@ else
 fi
 
 chmod +x "$TMPFILE"
-ok "Downloaded $BINARY_NAME"
+ok "Downloaded $DOWNLOAD_NAME as $BINARY_NAME"
 
 # --- Install binary ---
 

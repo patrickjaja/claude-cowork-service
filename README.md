@@ -72,13 +72,17 @@ nix run github:patrickjaja/claude-cowork-service
 
 > **Note:** Update by running `nix flake update` to pull the latest version. `nix run` always fetches the latest.
 
-### Quick Install (Any Distro)
+### ARM64 / aarch64 (NVIDIA DGX Spark, Jetson, etc.)
+
+ARM64 packages are available via the same APT and DNF repos — your package manager picks the correct architecture automatically. The quick install script also auto-detects ARM64.
+
+### Quick Install (Any Distro, x86_64 + ARM64)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/patrickjaja/claude-cowork-service/main/scripts/install.sh | bash
 ```
 
-This downloads the pre-built binary, installs it to `/usr/local/bin/`, creates a systemd user service, and starts it.
+This auto-detects your architecture (x86_64 or aarch64), downloads the correct binary, installs it to `/usr/local/bin/`, creates a systemd user service, and starts it.
 
 > **Note:** This method does not receive automatic updates. Re-run the command to update manually.
 

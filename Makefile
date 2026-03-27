@@ -12,11 +12,14 @@ all: build
 build:
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY) .
 
+build-arm64:
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o cowork-svc-linux-arm64 .
+
 extract-cowork-svc:
 	bash scripts/extract-cowork-svc.sh
 
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) cowork-svc-linux-arm64
 	rm -f cowork-svc.exe .cowork-svc-version
 
 install: build
@@ -33,4 +36,4 @@ lint:
 test:
 	$(GO) test ./...
 
-.PHONY: all build clean install uninstall lint test extract-cowork-svc
+.PHONY: all build build-arm64 clean install uninstall lint test extract-cowork-svc

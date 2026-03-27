@@ -1,15 +1,18 @@
 #!/bin/bash
 # build-deb.sh — Build .deb package for claude-cowork-service
 #
-# Usage: build-deb.sh <binary_path> <version>
+# Usage: build-deb.sh <binary_path> <version> [arch]
 #
-# Creates claude-cowork-service_<version>_amd64.deb in the current directory.
+# Creates claude-cowork-service_<version>_<arch>.deb in the current directory.
 # The package contains the static Go binary + systemd user service.
+#
+# arch defaults to "amd64". Pass "arm64" for ARM64 builds.
 
 set -euo pipefail
 
 BINARY="$1"
 VERSION="$2"
+ARCH="${3:-amd64}"
 
 if [ ! -f "$BINARY" ]; then
   echo "ERROR: Binary not found: $BINARY"
@@ -17,7 +20,6 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 PKG="claude-cowork-service"
-ARCH="amd64"
 DEB_NAME="${PKG}_${VERSION}_${ARCH}.deb"
 BUILD_DIR="$(mktemp -d)"
 

@@ -2,17 +2,19 @@
 #
 # Build RPM package for claude-cowork-service
 #
-# Usage: ./build-rpm.sh <binary_path> <version>
+# Usage: ./build-rpm.sh <binary_path> <version> [arch]
 #
-# Creates claude-cowork-service-<version>-1.x86_64.rpm in the current directory.
+# Creates claude-cowork-service-<version>-1.<arch>.rpm in the current directory.
+# arch defaults to "x86_64". Pass "aarch64" for ARM64 builds.
 #
 set -euo pipefail
 
 BINARY="$1"
 VERSION="$2"
+TARGET_ARCH="${3:-x86_64}"
 
 if [ -z "$BINARY" ] || [ -z "$VERSION" ]; then
-    echo "Usage: $0 <binary_path> <version>"
+    echo "Usage: $0 <binary_path> <version> [arch]"
     exit 1
 fi
 
@@ -44,6 +46,7 @@ cp "$SCRIPT_DIR/claude-cowork-service.spec" "$RPM_BUILD/SPECS/"
 rpmbuild -bb \
     --define "_topdir $RPM_BUILD" \
     --define "pkg_version $VERSION" \
+    --target "$TARGET_ARCH" \
     "$RPM_BUILD/SPECS/claude-cowork-service.spec"
 
 # Copy RPM to current directory
