@@ -251,9 +251,34 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		}
 	}
 
-	// Inject --brief flag to maximize SendUserMessage availability.
-	// Belt-and-suspenders: Electron sets CLAUDE_CODE_BRIEF=1 in env,
-	// but the CLI also accepts --brief as a direct flag.
+	// Strip --disallowedTools entirely on native Linux.
+	//
+	// Desktop passes --disallowedTools for VM-based sessions where certain tools
+	// (present_files, allow_cowork_file_delete, launch_code_session, create_artifact,
+	// update_artifact) are handled by the VM runtime rather than the CLI. On native
+	// Linux there is no VM — the CLI must handle all tools directly.
+	//
+	// Default --disallowedTools from Desktop (as of v1.1.9310):
+	//   AskUserQuestion, mcp__cowork__allow_cowork_file_delete,
+	//   mcp__cowork__present_files, mcp__cowork__launch_code_session,
+	//   mcp__cowork__create_artifact, mcp__cowork__update_artifact
+	//
+	// We remove the entire flag so all tools are available to the CLI.
+	for i, a := range args {
+		if a == "--disallowedTools" && i+1 < len(args) {
+			if b.debug {
+				log.Printf("[native] stripping --disallowedTools (VM-only restriction): %s", args[i+1])
+			}
+			// Remove both the flag and its value by blanking them
+			args = append(args[:i], args[i+2:]...)
+			break
+		}
+	}
+
+	// Inject --brief flag when Desktop signals dispatch/agent mode via CLAUDE_CODE_BRIEF=1.
+	// Desktop passes this env var for ditto/dispatch agent sessions (which have SendUserMessage
+	// in --tools), but NOT for regular cowork sessions. The --brief flag ensures the CLI
+	// registers SendUserMessage in its tool list (fixed in CLI v2.1.86).
 	if env["CLAUDE_CODE_BRIEF"] == "1" {
 		hasBrief := false
 		for _, a := range args {
@@ -270,26 +295,42 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		}
 	}
 
-	// Build mount path remappings: session/mnt/<mount> → real target path.
-	// After VM→real prefix mapping, stdin still contains paths like
-	// <realSessionDir>/mnt/<mount> which are symlinks that Glob can't follow.
-	// These remappings replace them with the actual target directories.
+	// Build mount path remappings (forward and reverse).
+	//
+	// Forward (stdin, Desktop→CLI): session/mnt/<mount> → real target path
+	//   Glob doesn't follow directory symlinks, so the model must see real paths.
+	//
+	// Reverse (stdout, CLI→Desktop): real target path → VM /sessions/<name>/mnt/<mount>
+	//   Desktop's MCP tools expect VM-style paths. Without reverse mapping, tools
+	//   like present_files fail because Desktop can't resolve native Linux paths.
 	var mountRemap []pathRemap
+	var reverseMountRemap []pathRemap
 	for mountName, relPath := range mounts {
 		hostPath := filepath.Join(home, relPath)
 		mntPath := realSessionDir + "/mnt/" + mountName
+		vmMntPath := sessionPrefix + "/mnt/" + mountName
 		if mntPath != hostPath {
 			mountRemap = append(mountRemap, pathRemap{
 				from: []byte(mntPath),
 				to:   []byte(hostPath),
 			})
 			if b.debug {
-				log.Printf("[native] mount remap: %s → %s", mntPath, hostPath)
+				log.Printf("[native] mount remap (fwd): %s → %s", mntPath, hostPath)
+			}
+		}
+		// Reverse: real host path → VM mount path (for outgoing MCP requests)
+		if hostPath != vmMntPath {
+			reverseMountRemap = append(reverseMountRemap, pathRemap{
+				from: []byte(hostPath),
+				to:   []byte(vmMntPath),
+			})
+			if b.debug {
+				log.Printf("[native] mount remap (rev): %s → %s", hostPath, vmMntPath)
 			}
 		}
 	}
 
-	return b.tracker.spawn(id, cmd, args, env, cwd, sessionPrefix, realSessionDir, mountRemap)
+	return b.tracker.spawn(id, cmd, args, env, cwd, sessionPrefix, realSessionDir, mountRemap, reverseMountRemap)
 }
 
 func (b *Backend) Kill(processID string, signal string) error {

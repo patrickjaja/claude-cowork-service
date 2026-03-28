@@ -254,6 +254,94 @@ During reverse engineering, we found 12 mismatches between the documented/expect
 | 11 | MCP proxy requests block Claude Code | Process hangs mid-conversation | ~~Auto-respond with error~~ **RESOLVED**: Desktop's session manager handles `control_request`/`control_response` over the event stream natively |
 | 12 | Event field is `"id"` not `"processId"` | Events ignored, UI stuck on "Starting up..." | Fixed event JSON tags |
 
+## Dispatch Support
+
+Dispatch lets you send tasks from the Claude mobile app to your Linux desktop. The cowork-service handles spawning and managing all dispatch sessions natively.
+
+### Architecture: The Ditto Orchestrator
+
+Claude Desktop spawns a long-running **dispatch orchestrator agent** (Anthropic internally calls it "Ditto", visible in session directories as `local_ditto_*`). This agent receives messages from the phone, delegates work to child sessions, and sends responses back via the `SendUserMessage` tool.
+
+```
+Phone → Anthropic API → SSE → Claude Desktop → wakes Ditto agent
+  │
+  ├── cowork-service spawns/resumes Ditto CLI session
+  │     Ditto has: SendUserMessage, dispatch MCP tools, all SDK MCP servers
+  │
+  ├── Ditto calls SendUserMessage({message: "..."}) → response appears on phone
+  │
+  ├── Ditto calls mcp__dispatch__start_task → Desktop asks cowork-service to spawn child
+  │     └── Child session does the work (code, files, research, etc.)
+  │     └── Child completes → Ditto reads transcript → Ditto replies to phone
+  │
+  └── Ditto can also use: Gmail, Drive, Chrome, Computer Use, scheduled tasks, etc.
+```
+
+### Session types
+
+Desktop uses three session types, identified by the `CLAUDE_CODE_TAGS` environment variable:
+
+| Type | `CLAUDE_CODE_TAGS` | `CLAUDE_CODE_BRIEF` | SendUserMessage | dispatch MCP |
+|------|-------------------|---------------------|-----------------|--------------|
+| Regular cowork | `lam_session_type:chat` | *(not set)* | No | No |
+| Ditto orchestrator | `lam_session_type:agent` | `1` | **Yes** | **Yes** |
+| Dispatch child | `lam_session_type:dispatch_child` | *(not set)* | No | No |
+
+### Linux-specific adaptations
+
+These adaptations are applied in `native/backend.go` and `native/process.go`:
+
+**1. Strip `--disallowedTools`**
+
+Desktop passes `--disallowedTools` containing tools that the VM runtime handles:
+`AskUserQuestion`, `mcp__cowork__allow_cowork_file_delete`, `mcp__cowork__present_files`,
+`mcp__cowork__launch_code_session`, `mcp__cowork__create_artifact`, `mcp__cowork__update_artifact`.
+
+On native Linux there is no VM runtime, so we strip the entire flag — all tools are available to the CLI directly.
+
+**2. Inject `--brief` flag (conditional)**
+
+Desktop passes `CLAUDE_CODE_BRIEF=1` in the environment for Ditto/dispatch agent sessions only (not for regular cowork). The backend detects this and injects the `--brief` CLI flag, which ensures the CLI registers `SendUserMessage` in its tool list. This was broken in CLI v2.1.79–2.1.85, fixed in v2.1.86.
+
+**3. Intercept `present_files` locally**
+
+Desktop's built-in `present_files` MCP handler validates file paths against VM-style mounts and rejects native Linux paths ("not accessible on user's computer"). The backend intercepts `present_files` control_requests in `streamOutput`, verifies the files exist on disk, and returns a synthetic success response directly to the CLI's stdin — bypassing Desktop entirely.
+
+The response includes a hint for the model to use `SendUserMessage` with `attachments` for phone delivery, since `present_files` UI cards only appear in the Desktop app.
+
+**4. Reverse mount path mapping**
+
+The backend builds reverse mount remappings (real host path → VM-style `/sessions/<name>/mnt/<mount>`) applied to outgoing MCP control_requests. This ensures tools other than `present_files` that flow through Desktop's MCP proxy can resolve paths correctly.
+
+### SendUserMessage tool reference
+
+The key tool for dispatch — how the model sends responses to the phone.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `message` | string | Yes | Markdown-formatted message content |
+| `attachments` | array | No | File paths (absolute or cwd-relative) for images, diffs, logs |
+| `status` | string | No | `"normal"` (replying to user) or `"proactive"` (agent-initiated) |
+
+**Note:** `mcp__dispatch__send_message` is a *different* tool — it sends messages between sessions (inter-agent), not to the user's phone. See [SEND_USER_MESSAGE_STATUS.md](https://github.com/patrickjaja/claude-desktop-bin/blob/master/SEND_USER_MESSAGE_STATUS.md) in claude-desktop-bin for the full investigation.
+
+### Debugging dispatch
+
+```bash
+# Run with debug logging to see all spawn args and MCP proxy flow
+systemctl --user stop claude-cowork
+cowork-svc-linux -debug 2>&1 | tee /tmp/cowork-debug.log
+
+# Check what Desktop passes for each session type
+grep 'DISPATCH-DEBUG' /tmp/cowork-debug.log
+
+# Check if present_files interception fires
+grep 'present_files handled' /tmp/cowork-debug.log
+
+# Check disallowedTools stripping
+grep 'stripping --disallowedTools' /tmp/cowork-debug.log
+```
+
 ## VM Backend (Dormant)
 
 The `vm/` directory contains a full QEMU/KVM backend implementation:

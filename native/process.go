@@ -3,6 +3,7 @@ package native
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -26,15 +27,16 @@ type pathRemap struct {
 
 // localProcess tracks a single spawned host process.
 type localProcess struct {
-	id         string
-	cmd        *exec.Cmd
-	stdin      io.WriteCloser
-	done       chan struct{}
-	mu         sync.Mutex
-	vmPrefix   []byte // e.g. "/sessions/optimistic-nice-brahmagupta"
-	realPrefix []byte // e.g. "/home/user/.local/share/claude-cowork/sessions/optimistic-nice-brahmagupta"
-	reverseMap bool   // only reverse-map output if VM path exists on filesystem
-	mountRemap []pathRemap // remap session/mnt/<mount> paths to real mount targets
+	id                string
+	cmd               *exec.Cmd
+	stdin             io.WriteCloser
+	done              chan struct{}
+	mu                sync.Mutex
+	vmPrefix          []byte      // e.g. "/sessions/optimistic-nice-brahmagupta"
+	realPrefix        []byte      // e.g. "/home/user/.local/share/claude-cowork/sessions/optimistic-nice-brahmagupta"
+	reverseMap        bool        // only reverse-map output if VM path exists on filesystem
+	mountRemap        []pathRemap // fwd: session/mnt/<mount> → real host path (for stdin)
+	reverseMountRemap []pathRemap // rev: real host path → VM /sessions/<name>/mnt/<mount> (for stdout)
 }
 
 // processTracker manages all spawned processes and streams their output via event callbacks.
@@ -55,7 +57,7 @@ func newProcessTracker(emit func(event interface{}), debug bool) *processTracker
 }
 
 // spawn starts a new process and streams its stdout/stderr via events.
-func (pt *processTracker) spawn(id string, cmd string, args []string, env map[string]string, cwd string, vmPrefix string, realPrefix string, mountRemap []pathRemap) (string, error) {
+func (pt *processTracker) spawn(id string, cmd string, args []string, env map[string]string, cwd string, vmPrefix string, realPrefix string, mountRemap []pathRemap, reverseMountRemap []pathRemap) (string, error) {
 	if id == "" {
 		pt.mu.Lock()
 		pt.nextID++
@@ -169,11 +171,12 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 	}
 
 	lp := &localProcess{
-		id:         id,
-		cmd:        c,
-		stdin:      stdin,
-		done:       make(chan struct{}),
-		mountRemap: mountRemap,
+		id:                id,
+		cmd:               c,
+		stdin:             stdin,
+		done:              make(chan struct{}),
+		mountRemap:        mountRemap,
+		reverseMountRemap: reverseMountRemap,
 	}
 	if vmPrefix != "" && realPrefix != "" {
 		lp.vmPrefix = []byte(vmPrefix)
@@ -273,15 +276,31 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 	for scanner.Scan() {
 		line := scanner.Text() + "\n"
 
-		// Remap real paths back to VM paths in output (only if VM path exists)
+		// Remap real mount target paths → VM mount paths in output.
+		// Must happen BEFORE the session prefix remap (more specific first).
+		// Example: /home/user/.config/Claude/.../outputs/ → /sessions/<name>/mnt/outputs/
+		if lp != nil {
+			for _, rm := range lp.reverseMountRemap {
+				line = string(bytes.ReplaceAll([]byte(line), rm.from, rm.to))
+			}
+		}
+
+		// Remap real session prefix → VM session prefix in output
 		if lp != nil && lp.reverseMap {
 			line = string(bytes.ReplaceAll([]byte(line), lp.realPrefix, lp.vmPrefix))
 		}
 
+		// Intercept present_files MCP calls and handle locally on native Linux.
+		// Desktop's present_files validates paths against VM mounts, which fails
+		// for native Linux paths. Since there's no VM boundary, we just verify
+		// the files exist and return success directly to the CLI.
+		if lp != nil && (strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`)) {
+			if handled := pt.tryHandlePresentFiles(lp, line); handled {
+				continue // don't forward to Desktop
+			}
+		}
+
 		// Detect MCP control_request messages from the CLI.
-		// These are JSON lines with "type":"control_request" that the CLI sends
-		// when it needs to call an SDK MCP server tool. Log them prominently
-		// so we can observe the MCP proxy flow during the experiment.
 		if strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`) {
 			log.Printf("[native] >>>MCP-PROXY>>> %s %s control_request detected: %s", id, stream, truncateLine(line, 500))
 		}
@@ -304,6 +323,147 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 		log.Printf("[native] %s %s scanner error: %v", id, stream, err)
 		pt.emit(process.NewErrorEvent(id, fmt.Sprintf("%s scanner error: %v", stream, err), false))
 	}
+}
+
+// tryHandlePresentFiles intercepts mcp__cowork__present_files control_requests
+// and handles them locally on native Linux. Returns true if handled.
+//
+// On the VM (Windows/Mac), present_files triggers file transfer from VM to host.
+// On native Linux, the files are already on the host filesystem — we just need
+// to verify they exist and return success. Desktop's present_files handler would
+// fail because it validates against VM-style mount paths.
+func (pt *processTracker) tryHandlePresentFiles(lp *localProcess, line string) bool {
+	// Quick check before parsing JSON
+	if !strings.Contains(line, "present_files") {
+		return false
+	}
+
+	// Parse the control_request.
+	// Actual format: {"type":"control_request","request_id":"...","request":{"subtype":"mcp_message","server_name":"cowork","message":{"method":"tools/call","params":{"name":"present_files","arguments":{...}}}}}
+	var req struct {
+		Type      string `json:"type"`
+		RequestID string `json:"request_id"`
+		Request   struct {
+			Subtype    string `json:"subtype"`
+			ServerName string `json:"server_name"`
+			Message    struct {
+				Method string `json:"method"`
+				Params struct {
+					Name string          `json:"name"`
+					Args json.RawMessage `json:"arguments"`
+				} `json:"params"`
+				JSONRPC string          `json:"jsonrpc"`
+				ID      json.RawMessage `json:"id"`
+			} `json:"message"`
+		} `json:"request"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &req); err != nil {
+		return false
+	}
+	if req.Type != "control_request" || req.Request.Subtype != "mcp_message" {
+		return false
+	}
+
+	// Check if this is a present_files tool call
+	toolName := req.Request.Message.Params.Name
+	if toolName != "present_files" {
+		return false
+	}
+
+	requestID := req.RequestID
+
+	// Parse the file arguments — present_files takes {files: [{file_path: "..."}]}
+	var args struct {
+		Files []struct {
+			FilePath string `json:"file_path"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(req.Request.Message.Params.Args, &args); err != nil {
+		log.Printf("[native] present_files: failed to parse args: %v", err)
+		return false
+	}
+
+	// Reverse the path mappings so we check real paths on disk.
+	// The line has already been reverse-mapped (real→VM), so we need to
+	// undo that to get back to real filesystem paths for os.Stat.
+	var presented []string
+	var missing []string
+	for _, f := range args.Files {
+		realPath := f.FilePath
+		// Undo VM prefix → real prefix
+		if lp.vmPrefix != nil && lp.realPrefix != nil {
+			realPath = strings.ReplaceAll(realPath, string(lp.vmPrefix), string(lp.realPrefix))
+		}
+		// Undo reverse mount mapping (VM mount → real host path)
+		for _, rm := range lp.mountRemap {
+			realPath = strings.ReplaceAll(realPath, string(rm.from), string(rm.to))
+		}
+
+		if _, err := os.Stat(realPath); err == nil {
+			presented = append(presented, realPath)
+		} else {
+			missing = append(missing, realPath)
+		}
+	}
+
+	// Build response.
+	// Hint the model to use SendUserMessage with attachments for phone delivery,
+	// since present_files only creates Desktop UI cards which don't reach mobile.
+	var resultText string
+	isError := false
+	if len(missing) > 0 {
+		isError = true
+		resultText = fmt.Sprintf("Cannot present %d file(s) — not found on disk:\n", len(missing))
+		for _, p := range missing {
+			resultText += "  - " + p + "\n"
+		}
+	} else {
+		resultText = fmt.Sprintf("Files verified on disk (%d). NOTE: present_files cards may not be visible to the user (mobile/remote). To ensure delivery, also call SendUserMessage and include the file paths in the attachments parameter.", len(presented))
+	}
+
+	log.Printf("[native] present_files handled locally: %d presented, %d missing", len(presented), len(missing))
+
+	// Build synthetic control_response matching Desktop's format
+	response := map[string]interface{}{
+		"type": "control_response",
+		"response": map[string]interface{}{
+			"subtype":    "success",
+			"request_id": requestID,
+			"response": map[string]interface{}{
+				"mcp_response": map[string]interface{}{
+					"result": map[string]interface{}{
+						"content": []map[string]interface{}{
+							{
+								"type": "text",
+								"text": resultText,
+							},
+						},
+						"isError": isError,
+					},
+					"jsonrpc": req.Request.Message.JSONRPC,
+					"id":      req.Request.Message.ID,
+				},
+			},
+		},
+	}
+
+	respBytes, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("[native] present_files: failed to marshal response: %v", err)
+		return false
+	}
+	respBytes = append(respBytes, '\n')
+
+	// Write response directly to CLI's stdin
+	lp.mu.Lock()
+	_, writeErr := lp.stdin.Write(respBytes)
+	lp.mu.Unlock()
+	if writeErr != nil {
+		log.Printf("[native] present_files: failed to write response: %v", writeErr)
+		return false
+	}
+
+	return true
 }
 
 // truncateLine truncates a string to maxLen characters for logging.
