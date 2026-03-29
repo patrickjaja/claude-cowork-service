@@ -149,6 +149,7 @@ find "$BIN_SOURCE_DIR" -maxdepth 1 -type f -exec cp {} "$OUTPUT_DIR/" \;
 
 FILE_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f | wc -l)
 echo "$LATEST_VERSION" > "$VERSION_FILE"
+echo "$LATEST_VERSION" > "$PROJECT_DIR/.upstream-version"
 
 ok "Extracted $FILE_COUNT files (version $LATEST_VERSION) to bin/"
 info "Contents:"

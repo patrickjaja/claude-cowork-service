@@ -72,11 +72,8 @@ Copy-paste this into Claude Code when a new version is available:
 >    - `COWORK_VM_BUNDLE.md` — update checksums, SHA, version history table
 >    - `COWORK_SVC_BINARY.md` — update size, version history, note any new files
 >
-> 6. Update the committed version tracker:
->    ```bash
->    cat bin/.version > .upstream-version
->    ```
-> 7. Commit with message: `Update bin/ and vm-bundle/ to v<VERSION>`
+> 6. Commit with message: `Update bin/ and vm-bundle/ to v<VERSION>`
+>    (Note: `.upstream-version` is updated automatically by the extract script)
 
 ---
 
