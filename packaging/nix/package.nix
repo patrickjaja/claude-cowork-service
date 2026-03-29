@@ -30,7 +30,7 @@ buildGoModule rec {
     mv $out/bin/${pname} $out/bin/cowork-svc-linux
 
     mkdir -p $out/lib/systemd/user
-    cp ${src}/claude-cowork.service $out/lib/systemd/user/claude-cowork.service
+    cp $src/claude-cowork.service $out/lib/systemd/user/claude-cowork.service
   '';
 
   meta = with lib; {
