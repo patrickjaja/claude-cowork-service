@@ -407,18 +407,30 @@ func (pt *processTracker) tryHandlePresentFiles(lp *localProcess, line string) b
 	}
 
 	// Build response.
-	// Hint the model to use SendUserMessage with attachments for phone delivery,
-	// since present_files only creates Desktop UI cards which don't reach mobile.
-	var resultText string
+	// Desktop's renderer treats each {type:"text", text:...} entry in the result
+	// as a file path and calls readLocalFile on it to display file cards. We must
+	// return individual file paths — NOT descriptive text — to match this contract.
 	isError := false
+	var contentItems []map[string]interface{}
+
 	if len(missing) > 0 {
 		isError = true
-		resultText = fmt.Sprintf("Cannot present %d file(s) — not found on disk:\n", len(missing))
+		errText := fmt.Sprintf("Cannot present %d file(s) — not found on disk:\n", len(missing))
 		for _, p := range missing {
-			resultText += "  - " + p + "\n"
+			errText += "  - " + p + "\n"
 		}
+		contentItems = append(contentItems, map[string]interface{}{
+			"type": "text",
+			"text": errText,
+		})
 	} else {
-		resultText = fmt.Sprintf("Files verified on disk (%d). NOTE: present_files cards may not be visible to the user (mobile/remote). To ensure delivery, also call SendUserMessage and include the file paths in the attachments parameter.", len(presented))
+		// Return each file path as a separate content item (matches Desktop's format).
+		for _, p := range presented {
+			contentItems = append(contentItems, map[string]interface{}{
+				"type": "text",
+				"text": p,
+			})
+		}
 	}
 
 	log.Printf("[native] present_files handled locally: %d presented, %d missing", len(presented), len(missing))
@@ -432,12 +444,7 @@ func (pt *processTracker) tryHandlePresentFiles(lp *localProcess, line string) b
 			"response": map[string]interface{}{
 				"mcp_response": map[string]interface{}{
 					"result": map[string]interface{}{
-						"content": []map[string]interface{}{
-							{
-								"type": "text",
-								"text": resultText,
-							},
-						},
+						"content":  contentItems,
 						"isError": isError,
 					},
 					"jsonrpc": req.Request.Message.JSONRPC,

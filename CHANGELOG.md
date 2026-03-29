@@ -6,6 +6,9 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## 1.0.24 — 2026-03-29
 
+### Fixed
+- **`present_files` INVALID_PATH error** — Return individual file paths as content items instead of a descriptive text message. Desktop's renderer treats each `{type:"text", text:...}` entry as a file path and calls `readLocalFile` on it; our previous response ("Files verified on disk (1). NOTE: ...") was passed verbatim as a path, causing `[INVALID_PATH] Path must be absolute`
+
 ## 1.0.23 — 2026-03-29
 
 ### Added
