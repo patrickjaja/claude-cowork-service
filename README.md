@@ -1,5 +1,12 @@
 # claude-cowork-service
 
+[![Claude Desktop](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/version-check.json)](https://github.com/patrickjaja/claude-cowork-service/actions/workflows/version-check.yml)
+[![AUR version](https://img.shields.io/aur/version/claude-cowork-service)](https://aur.archlinux.org/packages/claude-cowork-service)
+[![APT repo](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/apt-repo.json)](https://patrickjaja.github.io/claude-cowork-service/)
+[![RPM repo](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/rpm-repo.json)](https://patrickjaja.github.io/claude-cowork-service/)
+[![Nix flake](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/nix.json)](https://github.com/patrickjaja/claude-cowork-service/blob/main/flake.nix)
+[![CI](https://github.com/patrickjaja/claude-cowork-service/actions/workflows/ci.yml/badge.svg)](https://github.com/patrickjaja/claude-cowork-service/actions/workflows/ci.yml)
+
 Native Linux backend for Claude Desktop's **Cowork** feature. Reverse-engineered from Windows [`cowork-svc.exe`](https://github.com/anthropics/cowork-win32-service) bundled with Claude Desktop v1.1.4173.
 
 ## What This Is
@@ -372,6 +379,18 @@ length = struct.unpack('>I', sock.recv(4))[0]
 print(json.loads(sock.recv(length)))
 "
 ```
+
+## Upstream Reference Docs
+
+Deep analysis of the upstream Windows binaries and VM bundle we reverse-engineer against:
+
+| Document | What it tracks |
+|----------|---------------|
+| [COWORK_RPC_PROTOCOL.md](COWORK_RPC_PROTOCOL.md) | All 18 RPC methods, event types, protocol discoveries, Linux adaptations |
+| [COWORK_SVC_BINARY.md](COWORK_SVC_BINARY.md) | `cowork-svc.exe` Go internals, handler functions, app.asar SDK versions, checksums |
+| [COWORK_VM_BUNDLE.md](COWORK_VM_BUNDLE.md) | VM rootfs contents — sdk-daemon, Node.js, Python packages, system packages, checksums |
+
+These are re-validated on every upstream Claude Desktop release. See [update-prompt.md](update-prompt.md) for the update workflow.
 
 ## See Also
 

@@ -11,3 +11,4 @@ cowork-svc.exe
 .cowork-svc-version
 bin/
 vm-bundle/
+.vm-analysis/

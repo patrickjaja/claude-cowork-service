@@ -1,0 +1,217 @@
+name: Check for New Claude Desktop Version
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # Every 2 hours
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  issues: write
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Query latest upstream version
+        id: upstream
+        run: |
+          LATEST_JSON=$(wget -q -O - "https://downloads.claude.ai/releases/win32/x64/.latest") || {
+            echo "::warning::Failed to query Claude version API"
+            exit 0
+          }
+
+          VERSION=$(echo "$LATEST_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Upstream version: ${VERSION}"
+
+      - name: Get current tracked version
+        id: tracked
+        if: steps.upstream.outputs.version
+        run: |
+          # Read the version from bin/.version (tracks which Claude Desktop version
+          # our reference materials were extracted from)
+          if [ -f bin/.version ]; then
+            CURRENT=$(cat bin/.version | tr -d '[:space:]')
+          else
+            CURRENT=""
+          fi
+
+          echo "version=${CURRENT}" >> $GITHUB_OUTPUT
+          echo "Current tracked version: ${CURRENT}"
+
+      - name: Ensure new-version label exists
+        if: steps.upstream.outputs.version && steps.tracked.outputs.version != steps.upstream.outputs.version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "new-version" \
+            --repo "${{ github.repository }}" \
+            --description "Auto-created: new upstream Claude Desktop version detected" \
+            --color "0E8A16" \
+            2>/dev/null || true
+
+      - name: Check for existing notification issue
+        id: existing
+        if: steps.upstream.outputs.version && steps.tracked.outputs.version != steps.upstream.outputs.version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM: ${{ steps.upstream.outputs.version }}
+        run: |
+          ISSUE_COUNT=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --label "new-version" \
+            --state open \
+            --search "New Claude Desktop v${UPSTREAM}" \
+            --json number \
+            --jq 'length')
+
+          echo "count=${ISSUE_COUNT}" >> $GITHUB_OUTPUT
+          echo "Open issues for v${UPSTREAM}: ${ISSUE_COUNT}"
+
+      - name: Create notification issue
+        if: |
+          steps.upstream.outputs.version &&
+          steps.tracked.outputs.version != steps.upstream.outputs.version &&
+          steps.existing.outputs.count == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM: ${{ steps.upstream.outputs.version }}
+          TRACKED: ${{ steps.tracked.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue create \
+            --repo "${REPO}" \
+            --label "new-version" \
+            --title "New Claude Desktop v${UPSTREAM} detected" \
+            --body "$(cat <<EOF
+          ## New upstream version detected
+
+          | | Version |
+          |---|---|
+          | **Upstream** | \`${UPSTREAM}\` |
+          | **Current (bin/.version)** | \`${TRACKED}\` |
+
+          ### What needs updating
+
+          The \`bin/\` and \`vm-bundle/\` reference materials were extracted from Claude Desktop v${TRACKED}.
+          Upstream is now at v${UPSTREAM}.
+
+          ### Next steps
+
+          1. Run the extract scripts to update reference materials:
+             \`\`\`bash
+             ./scripts/extract-cowork-svc.sh
+             ./scripts/extract-vm-bundle.sh
+             \`\`\`
+          2. Diff old vs new — check for protocol changes (see \`update-prompt.md\`)
+          3. Verify Go code compatibility (Prompt 3 in \`update-prompt.md\`)
+          4. Update docs: \`COWORK_RPC_PROTOCOL.md\`, \`COWORK_VM_BUNDLE.md\`, \`COWORK_SVC_BINARY.md\`
+          5. Commit and release if our Go code needed changes
+
+          ---
+          *Auto-detected by [version-check workflow](https://github.com/${REPO}/actions/workflows/version-check.yml)*
+          EOF
+          )"
+
+          echo "::notice::Created issue for new version v${UPSTREAM}"
+
+      - name: Update version badge on gh-pages
+        if: steps.upstream.outputs.version && steps.tracked.outputs.version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM: ${{ steps.upstream.outputs.version }}
+          TRACKED: ${{ steps.tracked.outputs.version }}
+        run: |
+          if [ "${TRACKED}" = "${UPSTREAM}" ]; then
+            COLOR="brightgreen"
+            MESSAGE="v${TRACKED} (latest)"
+          else
+            COLOR="red"
+            MESSAGE="v${TRACKED} ← v${UPSTREAM} available"
+          fi
+
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          REPO_DIR="/tmp/gh-pages-badge"
+          rm -rf "$REPO_DIR"
+
+          if git ls-remote --heads "$REMOTE" gh-pages | grep -q gh-pages; then
+            git clone --depth 1 --branch gh-pages "$REMOTE" "$REPO_DIR"
+          else
+            mkdir -p "$REPO_DIR" && cd "$REPO_DIR"
+            git init && git checkout -b gh-pages && git remote add origin "$REMOTE"
+            cd -
+          fi
+
+          mkdir -p "$REPO_DIR/badges"
+          cat > "$REPO_DIR/badges/version-check.json" <<BADGE_EOF
+          {
+            "schemaVersion": 1,
+            "label": "Claude Desktop",
+            "message": "${MESSAGE}",
+            "color": "${COLOR}"
+          }
+          BADGE_EOF
+
+          touch "$REPO_DIR/.nojekyll"
+
+          # Seed APT repo badge from repo contents (if not yet present)
+          if [ ! -f "$REPO_DIR/badges/apt-repo.json" ] && [ -f "$REPO_DIR/deb/Packages" ]; then
+            DEB_VER=$(grep -m1 '^Version:' "$REPO_DIR/deb/Packages" | awk '{print $2}' | cut -d- -f1)
+            DEB_ARCHS=$(grep '^Architecture:' "$REPO_DIR/deb/Packages" | awk '{print $2}' | sort -u | paste -sd', ')
+            cat > "$REPO_DIR/badges/apt-repo.json" <<BADGE_EOF
+          {
+            "schemaVersion": 1,
+            "label": "APT repo",
+            "message": "v${DEB_VER} (${DEB_ARCHS})",
+            "color": "blue"
+          }
+          BADGE_EOF
+          fi
+
+          # Seed RPM repo badge (if not yet present)
+          if [ ! -f "$REPO_DIR/badges/rpm-repo.json" ] && [ -d "$REPO_DIR/rpm" ]; then
+            RPM_ARCHS=""
+            [ -d "$REPO_DIR/rpm/x86_64" ] && RPM_ARCHS="x86_64"
+            [ -d "$REPO_DIR/rpm/aarch64" ] && RPM_ARCHS="${RPM_ARCHS:+$RPM_ARCHS, }aarch64"
+            RPM_VER=$(ls "$REPO_DIR/rpm/x86_64/" 2>/dev/null | head -1 | grep -oP '\d+\.\d+\.\d+' || echo "${TRACKED}")
+            cat > "$REPO_DIR/badges/rpm-repo.json" <<BADGE_EOF
+          {
+            "schemaVersion": 1,
+            "label": "RPM repo",
+            "message": "v${RPM_VER} (${RPM_ARCHS})",
+            "color": "blue"
+          }
+          BADGE_EOF
+          fi
+
+          # Seed Nix flake badge (if not yet present)
+          if [ ! -f "$REPO_DIR/badges/nix.json" ]; then
+            # Get latest release version for Nix badge
+            LATEST_RELEASE=$(curl -sf "https://api.github.com/repos/${{ github.repository }}/releases/latest" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          print(data.get('tag_name', '').lstrip('v'))
+          " 2>/dev/null || echo "")
+            if [ -n "$LATEST_RELEASE" ]; then
+              cat > "$REPO_DIR/badges/nix.json" <<BADGE_EOF
+          {
+            "schemaVersion": 1,
+            "label": "Nix flake",
+            "message": "v${LATEST_RELEASE}",
+            "color": "blue"
+          }
+          BADGE_EOF
+            fi
+          fi
+
+          cd "$REPO_DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || {
+            git commit -m "Update version badge: ${MESSAGE}"
+            git push origin gh-pages
+          }
