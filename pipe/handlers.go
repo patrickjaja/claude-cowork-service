@@ -32,7 +32,7 @@ func (h *Handler) Handle(conn net.Conn, payload []byte) {
 		return
 	}
 
-	if h.debug {
+	if h.debug && req.Method != "isGuestConnected" && req.Method != "isProcessRunning" {
 		log.Printf("RPC: %s (id=%v)", req.Method, req.ID)
 	}
 
