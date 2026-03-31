@@ -455,6 +455,8 @@ jobs:
     if: needs.prepare.outputs.do_release == 'true'
     runs-on: ubuntu-latest
     container: fedora:40
+    permissions:
+      contents: write
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
