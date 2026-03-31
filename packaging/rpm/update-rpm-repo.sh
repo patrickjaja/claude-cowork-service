@@ -51,7 +51,9 @@ MACROS
 echo "" | rpmsign --addsign "$REPO_DIR/rpm/$ARCH/$RPM_BASENAME"
 
 # Verify signature — import public key into RPM keyring first, then check
-rpm --import <(gpg --armor --export "$GPG_KEY_ID")
+gpg --armor --export "$GPG_KEY_ID" > /tmp/rpm-sign-key.asc
+rpm --import /tmp/rpm-sign-key.asc
+rm -f /tmp/rpm-sign-key.asc
 rpm -K "$REPO_DIR/rpm/$ARCH/$RPM_BASENAME" | grep -qi "signatures ok" || {
   echo "ERROR: RPM signature verification failed for $RPM_BASENAME"
   rpm -K "$REPO_DIR/rpm/$ARCH/$RPM_BASENAME"
