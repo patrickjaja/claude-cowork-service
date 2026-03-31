@@ -358,7 +358,17 @@ jobs:
 
             **Any distro (auto-detects arch):** `curl -fsSL .../scripts/install.sh | bash`
 
-      - name: Update and Deploy APT + RPM Repositories
+      - name: Upload RPM files for signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-unsigned
+          path: |
+            ${{ steps.rpm.outputs.rpm_file }}
+            ${{ steps.rpm_arm64.outputs.rpm_file }}
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Deploy APT Repository
         env:
           GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -366,28 +376,18 @@ jobs:
           VERSION="${RELEASE_VERSION#v}"
           DEB_FILE="$(pwd)/${{ steps.deb.outputs.deb_file }}"
           DEB_ARM64_FILE="$(pwd)/${{ steps.deb_arm64.outputs.deb_file }}"
-          RPM_FILE="$(pwd)/${{ steps.rpm.outputs.rpm_file }}"
-          RPM_ARM64_FILE="$(pwd)/${{ steps.rpm_arm64.outputs.rpm_file }}"
-
-          if [ ! -f "$DEB_FILE" ] && [ ! -f "$RPM_FILE" ]; then
-            echo "::warning::No .deb or .rpm files found — skipping repo deploy"
-            exit 0
-          fi
 
           if [ -z "$GPG_PRIVATE_KEY" ]; then
             echo "::warning::APT_GPG_PRIVATE_KEY secret not set — skipping repo deploy"
             exit 0
           fi
 
-          # Install repo tools
-          sudo apt-get install -y dpkg-dev apt-utils createrepo-c rpm
+          sudo apt-get install -y dpkg-dev apt-utils
 
-          # Import GPG key from secret
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import
           GPG_KEY_ID=$(echo "$GPG_PRIVATE_KEY" | gpg --show-keys --with-colons 2>/dev/null \
             | grep '^sec:' | head -1 | cut -d: -f5)
 
-          # Clone existing gh-pages branch (or init fresh if first time)
           PAGES_DIR="/tmp/gh-pages-repo"
           rm -rf "$PAGES_DIR"
           REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
@@ -399,14 +399,12 @@ jobs:
             cd -
           fi
 
-          # Copy static files from main branch
           cp packaging/apt/install.sh "$PAGES_DIR/"
           cp packaging/rpm/install-rpm.sh "$PAGES_DIR/"
           cp packaging/apt/index.html "$PAGES_DIR/"
           gpg --armor --export "$GPG_KEY_ID" > "$PAGES_DIR/gpg-key.asc"
           touch "$PAGES_DIR/.nojekyll"
 
-          # Build APT repo metadata (amd64 + arm64)
           if [ -f "$DEB_FILE" ]; then
             bash packaging/apt/update-apt-repo.sh "$DEB_FILE" "$PAGES_DIR" "$GPG_KEY_ID" amd64
           else
@@ -418,17 +416,76 @@ jobs:
             echo "::warning::No arm64 .deb file — skipping APT arm64 update"
           fi
 
-          # Build RPM repo metadata (x86_64 + aarch64)
-          if [ -f "$RPM_FILE" ]; then
-            bash packaging/rpm/update-rpm-repo.sh "$RPM_FILE" "$PAGES_DIR" "$GPG_KEY_ID" x86_64
-          else
-            echo "::warning::No x86_64 .rpm file — skipping RPM x86_64 update"
+          cd "$PAGES_DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || {
+            git commit -m "Update APT repo: claude-cowork-service ${VERSION} (amd64 + arm64)"
+            git push origin gh-pages
+          }
+
+  # ================================================================
+  # RPM Repository — runs on Fedora for native rpm-sign support
+  # ================================================================
+  deploy-rpm-repo:
+    needs: [prepare, release]
+    if: needs.prepare.outputs.do_release == 'true'
+    runs-on: ubuntu-latest
+    container: fedora:40
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install RPM tooling
+        run: dnf install -y rpm-sign createrepo_c gnupg2 git
+
+      - name: Download RPM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: rpm-unsigned
+          path: rpm-files/
+
+      - name: Sign RPMs and deploy repository
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "::warning::APT_GPG_PRIVATE_KEY secret not set — skipping RPM repo deploy"
+            exit 0
           fi
-          if [ -f "$RPM_ARM64_FILE" ]; then
-            bash packaging/rpm/update-rpm-repo.sh "$RPM_ARM64_FILE" "$PAGES_DIR" "$GPG_KEY_ID" aarch64
+
+          # Import GPG key
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          GPG_KEY_ID=$(echo "$GPG_PRIVATE_KEY" | gpg --show-keys --with-colons 2>/dev/null \
+            | grep '^sec:' | head -1 | cut -d: -f5)
+          gpg --armor --export "$GPG_KEY_ID" > /tmp/gpg-key.asc
+
+          # Clone gh-pages (includes APT repo from previous job)
+          PAGES_DIR="/tmp/gh-pages-repo"
+          rm -rf "$PAGES_DIR"
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if git ls-remote --heads "$REMOTE" gh-pages | grep -q gh-pages; then
+            git clone --depth 1 --branch gh-pages "$REMOTE" "$PAGES_DIR"
           else
-            echo "::warning::No aarch64 .rpm file — skipping RPM aarch64 update"
+            mkdir -p "$PAGES_DIR" && cd "$PAGES_DIR"
+            git init && git checkout -b gh-pages && git remote add origin "$REMOTE"
+            cd -
           fi
+
+          # Copy GPG public key (may have been updated)
+          cp /tmp/gpg-key.asc "$PAGES_DIR/gpg-key.asc"
+
+          # Sign and add each RPM to the repository
+          for RPM_FILE in rpm-files/*.rpm; do
+            [ -f "$RPM_FILE" ] || continue
+            bash packaging/rpm/update-rpm-repo.sh "$RPM_FILE" "$PAGES_DIR" "$GPG_KEY_ID"
+          done
 
           # Commit and push
           cd "$PAGES_DIR"
@@ -436,7 +493,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --staged --quiet || {
-            git commit -m "Update APT + RPM repos: claude-cowork-service ${VERSION} (amd64 + arm64)"
+            git commit -m "Update RPM repo: claude-cowork-service ${VERSION}"
             git push origin gh-pages
           }
 
