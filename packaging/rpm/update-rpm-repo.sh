@@ -39,7 +39,14 @@ echo "Copied $(basename "$RPM_FILE") to rpm/$ARCH/"
 RPM_BASENAME=$(basename "$RPM_FILE")
 echo "%_gpg_name $GPG_KEY_ID" > ~/.rpmmacros
 rpm --addsign "$REPO_DIR/rpm/$ARCH/$RPM_BASENAME"
-echo "Signed $RPM_BASENAME"
+
+# Verify signature — fail the pipeline if the RPM is not properly signed
+rpm -K "$REPO_DIR/rpm/$ARCH/$RPM_BASENAME" | grep -q "pgp\|gpg" || {
+  echo "ERROR: RPM signature verification failed for $RPM_BASENAME"
+  rpm -K "$REPO_DIR/rpm/$ARCH/$RPM_BASENAME"
+  exit 1
+}
+echo "Signed and verified $RPM_BASENAME"
 
 # Prune old versions for this arch — keep latest 2
 cd "$REPO_DIR/rpm/$ARCH"
