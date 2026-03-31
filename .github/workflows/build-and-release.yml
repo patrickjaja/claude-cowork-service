@@ -506,8 +506,9 @@ jobs:
           cp /tmp/gpg-key.asc "$PAGES_DIR/gpg-key.asc"
 
           # Sign and add each RPM to the repository
-          for RPM_FILE in rpm-files/*.rpm; do
-            [ -f "$RPM_FILE" ] || continue
+          echo "RPM files found:"
+          find rpm-files/ -name '*.rpm' -type f
+          find rpm-files/ -name '*.rpm' -type f | while read -r RPM_FILE; do
             bash packaging/rpm/update-rpm-repo.sh "$RPM_FILE" "$PAGES_DIR" "$GPG_KEY_ID"
           done
 
