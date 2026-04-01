@@ -6,7 +6,7 @@ After=default.target
 # Import Wayland/display environment from the user session so spawned processes
 # (Claude Code CLI) can access display, clipboard, and D-Bus services.
 # This is critical on Wayland-only systems (e.g. Ubuntu 25.10+) where X11 is unavailable.
-ExecStartPre=-/bin/bash -c 'systemctl --user import-environment WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DISPLAY DBUS_SESSION_BUS_ADDRESS HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK 2>/dev/null'
+ExecStartPre=-/bin/bash -c 'systemctl --user import-environment WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DISPLAY DBUS_SESSION_BUS_ADDRESS HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK YDOTOOL_SOCKET 2>/dev/null'
 ExecStart=/usr/bin/cowork-svc-linux
 Restart=on-failure
 RestartSec=5
