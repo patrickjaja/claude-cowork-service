@@ -4,6 +4,13 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Added
+- **README: Systemd service documentation** — Documents `ExecStartPre` environment import, all 8 Wayland/display env vars, and why they're needed
+- **README: Dependencies table** — Runtime (systemd, bash), functional (Claude Code CLI), optional (socat), and build-time (Go 1.21+) deps
+- **README: Troubleshooting section** — Covers Wayland display issues, ydotool/Computer Use, and `claude` binary resolution
+- **README: Claude Code dependency clarification** — Explains why it's `optdepends` (users need latest version) with install methods (npm, AUR, Nix)
+- **NixOS module: Wayland environment import** — `ExecStartPre` in `module.nix` matching the standard service file, using NixOS-correct paths (`${pkgs.bash}`, `${pkgs.systemd}`)
+
 ## 1.0.39 — 2026-04-01
 
 ### Changed

@@ -119,6 +119,8 @@ curl -fsSL https://raw.githubusercontent.com/patrickjaja/claude-cowork-service/m
 
 ### From Source
 
+Requires **Go 1.21+** to build.
+
 ```bash
 git clone https://github.com/patrickjaja/claude-cowork-service.git
 cd claude-cowork-service
@@ -129,19 +131,66 @@ sudo make install                  # installs to /usr/bin (default)
 
 > **Note:** No automatic updates. Pull and rebuild to update: `git pull && make && sudo make install`.
 
+## Dependencies
+
+| Category | Dependency | Notes |
+|----------|-----------|-------|
+| **Runtime** | systemd | User service management (`systemctl --user`) |
+| **Runtime** | bash | Binary resolution in launcher scripts |
+| **Required** | Claude Code CLI | `claude` binary must be in `$PATH` — `npm i -g @anthropic-ai/claude-code` recommended (always latest); declared as `optdepends` in packaging so you control the version |
+| **Optional** | socat | Socket health check fallback |
+| **Build (from source)** | Go 1.21+ | The daemon is pure Go with no external library dependencies |
+
 ## Claude Code Dependency
 
-Some Cowork features (e.g. delegating coding tasks) spawn a Claude Code CLI instance. For these features, **Claude Code must be installed** on the host.
+**Claude Code is required** for Cowork and Dispatch to function. The daemon spawns `claude` CLI instances for every coding task, agent session, and dispatch interaction.
 
-On Arch Linux, the AUR package `claude-code` is pulled in automatically as a dependency. If you prefer the npm-installed version (e.g. `npm i -g @anthropic-ai/claude-code`), which ships the minified JS source instead of a pre-built binary, you can uninstall the AUR package after installation — as long as `claude` is on your `$PATH`, Cowork will find it.
+The packaging intentionally declares Claude Code as an **optional dependency** (`optdepends`) rather than a hard dependency. This is because Cowork/Dispatch often requires the **latest** Claude Code release -- if it were a hard `depends`, the package manager would install whatever (potentially outdated) version it has cached, which can cause subtle failures. By keeping it optional, you choose your install method and control the version.
+
+**Recommended install** (always gets the latest version):
+
+```bash
+npm i -g @anthropic-ai/claude-code
+```
+
+Alternative methods:
+
+- **AUR:** `yay -S claude-code` (version may lag behind npm)
+- **Nix:** `nix-env -iA nixpkgs.claude-code` (version may lag behind npm)
+
+As long as the `claude` binary is on your `$PATH`, the daemon will find it.
 
 Features that **require** Claude Code:
 - Delegated coding tasks (Claude Desktop spawns `claude` via `spawn` RPC)
 - Any Cowork session that executes CLI commands through the agent
+- All Dispatch sessions (orchestrator and child)
 
 Features that **do not** require Claude Code:
 - The daemon itself (socket protocol, session management, event streaming)
 - Mount path handling and file operations within sessions
+
+## Systemd User Service
+
+The daemon runs as a systemd user service (`claude-cowork.service`). A key detail: **systemd user services do not inherit your desktop session's environment variables by default.** Without the display-related variables, spawned Claude Code processes cannot access the Wayland/X11 display, clipboard, or D-Bus services.
+
+The service file solves this with an `ExecStartPre` that imports the necessary variables from the user session:
+
+```ini
+ExecStartPre=-/bin/bash -c 'systemctl --user import-environment WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DISPLAY DBUS_SESSION_BUS_ADDRESS HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK YDOTOOL_SOCKET 2>/dev/null'
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `WAYLAND_DISPLAY` | Wayland compositor socket |
+| `XDG_SESSION_TYPE` | Session type detection (`wayland` / `x11`) |
+| `XDG_CURRENT_DESKTOP` | Desktop environment detection (KDE, GNOME, etc.) |
+| `DISPLAY` | X11/XWayland display |
+| `DBUS_SESSION_BUS_ADDRESS` | D-Bus session bus (clipboard, notifications) |
+| `HYPRLAND_INSTANCE_SIGNATURE` | Hyprland-specific IPC |
+| `SWAYSOCK` | Sway-specific IPC |
+| `YDOTOOL_SOCKET` | ydotool daemon socket (for Computer Use input simulation) |
+
+The leading `-` on `ExecStartPre` means the service still starts even if the import command fails (e.g. some variables may not exist on all setups).
 
 ## Quick Start
 
@@ -379,6 +428,51 @@ length = struct.unpack('>I', sock.recv(4))[0]
 print(json.loads(sock.recv(length)))
 "
 ```
+
+## Troubleshooting
+
+### Wayland / Computer Use issues
+
+**Claude Code can't access the display in cowork sessions:**
+
+The systemd environment may be missing display variables. Check what's imported:
+
+```bash
+systemctl --user show-environment | grep WAYLAND
+systemctl --user show-environment | grep DISPLAY
+```
+
+If the variables are missing, import them manually and restart the service:
+
+```bash
+systemctl --user import-environment WAYLAND_DISPLAY XDG_SESSION_TYPE DISPLAY DBUS_SESSION_BUS_ADDRESS
+systemctl --user restart claude-cowork
+```
+
+**ydotool doesn't work in cowork sessions (Computer Use):**
+
+Check that the `YDOTOOL_SOCKET` variable is in the systemd environment:
+
+```bash
+systemctl --user show-environment | grep YDOTOOL
+```
+
+If missing, ensure the ydotool daemon is running and import the socket path:
+
+```bash
+systemctl --user import-environment YDOTOOL_SOCKET
+systemctl --user restart claude-cowork
+```
+
+**`claude` binary isn't found:**
+
+The daemon resolves `claude` from `$PATH` via `bash -lc`. Verify it's accessible:
+
+```bash
+bash -lc "which claude"
+```
+
+If this prints nothing, Claude Code is either not installed or not in your login shell's `$PATH`. See the [Claude Code Dependency](#claude-code-dependency) section for install options.
 
 ## Upstream Reference Docs
 

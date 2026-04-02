@@ -39,6 +39,9 @@ in
       wantedBy = [ "default.target" ];
       path = cfg.extraPath;
       serviceConfig = {
+        # Import Wayland/display environment from the user session so spawned processes
+        # (Claude Code CLI) can access display, clipboard, and D-Bus services.
+        ExecStartPre = "-${pkgs.bash}/bin/bash -c '${pkgs.systemd}/bin/systemctl --user import-environment WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DISPLAY DBUS_SESSION_BUS_ADDRESS HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK YDOTOOL_SOCKET 2>/dev/null'";
         ExecStart = "${cfg.package}/bin/cowork-svc-linux";
         Restart = "on-failure";
         RestartSec = 5;
