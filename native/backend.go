@@ -12,6 +12,29 @@ import (
 	"github.com/patrickjaja/claude-cowork-service/process"
 )
 
+// resolveSubpath resolves a subpath that may be root-relative or home-relative.
+//
+// Claude Desktop v1.569.0+ changed getVMStorageSubpath to return root-relative
+// subpaths (e.g. "home/user/.config/Claude/...") instead of home-relative ones
+// (e.g. ".config/Claude/..."). When joined with os.UserHomeDir() naively, this
+// produces doubled paths like "/home/user/home/user/.config/Claude/...".
+//
+// This function detects the format and returns the correct absolute path:
+//   - Root-relative ("home/user/..."): prepend "/" → "/home/user/..."
+//   - Home-relative (".config/..."): prepend home → "/home/user/.config/..."
+func resolveSubpath(home, relPath string) string {
+	if relPath == "" {
+		return home
+	}
+	// Treat relPath as root-absolute: /home/user/.config/…
+	asRoot := filepath.Clean("/" + relPath)
+	if strings.HasPrefix(asRoot, home+string(filepath.Separator)) || asRoot == home {
+		return asRoot // already contains the home directory
+	}
+	// Legacy home-relative path: .config/…
+	return filepath.Join(home, relPath)
+}
+
 // Backend implements pipe.VMBackend by executing commands directly on the host.
 // No VM is involved — lifecycle methods satisfy the protocol with instant success.
 type Backend struct {
@@ -132,7 +155,7 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 	}
 
 	for mountName, relPath := range mounts {
-		hostPath := filepath.Join(home, relPath)
+		hostPath := resolveSubpath(home, relPath)
 		// Skip mounts whose target is not a directory (e.g. app.asar).
 		// Claude Desktop passes every mount as --add-dir to the CLI,
 		// which rejects non-directory paths.
@@ -217,7 +240,7 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		if strings.HasPrefix(mountName, ".") || mountName == "uploads" || mountName == "outputs" {
 			continue
 		}
-		wsPath := filepath.Join(home, relPath)
+		wsPath := resolveSubpath(home, relPath)
 		if info, err := os.Stat(wsPath); err == nil && info.IsDir() {
 			if b.debug {
 				log.Printf("[native] using workspace mount %q as cwd: %s (was %s)", mountName, wsPath, cwd)
@@ -320,7 +343,7 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 	var mountRemap []pathRemap
 	var reverseMountRemap []pathRemap
 	for mountName, relPath := range mounts {
-		hostPath := filepath.Join(home, relPath)
+		hostPath := resolveSubpath(home, relPath)
 		mntPath := realSessionDir + "/mnt/" + mountName
 		vmMntPath := sessionPrefix + "/mnt/" + mountName
 		if mntPath != hostPath {
