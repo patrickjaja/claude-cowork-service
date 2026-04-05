@@ -203,10 +203,18 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 
 	// If /sessions isn't writable (no root), remap cwd and env to real paths
 	if _, err := os.Stat(cwd); err != nil {
-		remapped := filepath.Join(realSessionDir, filepath.Base(cwd))
-		// cwd is just the session dir itself (/sessions/<name>)
-		if filepath.Base(cwd) == name {
-			remapped = realSessionDir
+		// Replace the /sessions/<name> prefix with the real session dir,
+		// preserving any sub-path (e.g. /mnt/outputs). Using filepath.Base
+		// here would drop everything but the final segment, turning
+		// /sessions/<name>/mnt/outputs into realSessionDir/outputs and
+		// triggering a child-side chdir() failure that surfaces as a
+		// misleading "fork/exec: no such file or directory" error.
+		var remapped string
+		if cwd == sessionPrefix || strings.HasPrefix(cwd, sessionPrefix+"/") {
+			remapped = realSessionDir + cwd[len(sessionPrefix):]
+		} else {
+			// Fallback: cwd doesn't reference the session prefix at all.
+			remapped = filepath.Join(realSessionDir, filepath.Base(cwd))
 		}
 		if b.debug {
 			log.Printf("[native] remap cwd: %s → %s", cwd, remapped)
