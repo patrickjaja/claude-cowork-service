@@ -11,6 +11,24 @@ All notable changes to claude-cowork-service will be documented in this file.
 ### Fixed
 - **Double-nested home directory in symlink targets** — Claude Desktop v1.569.0+ changed `getVMStorageSubpath` to return root-relative subpaths (`home/user/.config/...`), causing `filepath.Join(home, relPath)` to produce doubled paths (`/home/user/home/user/.config/...`). Added `resolveSubpath()` helper that detects the format and resolves correctly. Fixes #16.
 
+### Changed
+- **Upstream update to Claude Desktop v1.1062.0** (from v1.569.0)
+- **cowork-svc.exe**: Internal cert handling refactored (`enumerateRootStore`), new `vm/rpc_types.go` source file; binary shrank 8KB (11,186,000 → 11,177,808 bytes); same Go version (go1.24.13); no new RPC methods
+- **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums
+- **SDK versions**: claude-agent-sdk 0.2.92 (was 0.2.87), claude-agent-sdk-future 0.2.93-dev (was 0.2.90-dev), conway-client updated; Electron unchanged at 40.8.5
+- **No Go code changes needed** — all 22 RPC methods, 8 event types, spawn parameters, and wire format are identical
+- **New Desktop features** (all Electron app-layer, no pipe protocol impact):
+  - Cowork onboarding system (`cowork-onboarding` MCP server, `setup-cowork` skill)
+  - Cowork search subsystem (`searchSessions` IPC)
+  - Session file operations (`readFileAtCwd`, `writeSessionFile`, etc.)
+  - Deploy/preview system (`deployPreview`, `suggestDeployName`, `unpublishDeploy`)
+  - Marketplace enhancements (`createAccountMarketplace`, `uploadAccountPlugin`, etc.)
+  - Connectors concept (`suggest_connectors` MCP tool)
+  - Transcript feedback, auto-fix toggle, cowork egress blocking
+  - Expanded disallowed tools lists (onboarding tool, CU-only restrictions)
+  - Removed settings: `isClaudeCodeForDesktopEnabled`, `isDesktopExtensionEnabled`, `autoUpdaterEnforcementHours`, `setCiMonitorEnabled`, `forceLoginOrgUUID`, `customDeploymentUrl`
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.1062.0
+
 ## 1.0.41 — 2026-04-03
 
 ## 1.0.40 — 2026-04-02

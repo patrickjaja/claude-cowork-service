@@ -1,4 +1,4 @@
-# Cowork RPC Protocol Reference — v1.569.0
+# Cowork RPC Protocol Reference — v1.1062.0
 
 > **This document is the single source of truth for the protocol between Claude Desktop and cowork-svc.**
 > Re-validate on every upstream Claude Desktop version update.
@@ -809,7 +809,7 @@ Desktop passes `--disallowedTools` containing tools handled by the VM runtime:
 
 On native Linux there is no VM runtime, so the entire flag and its value are removed -- all tools are available to the CLI directly.
 
-**Unchanged in v1.2.234** — same disallowedTools list.
+**Expanded in v1.1062.0** — bridge/dispatch disallowed list now also includes `mcp__cowork-onboarding__show_onboarding_role_picker`. CU-only mode adds: `mcp__workspace__bash`, `mcp__workspace__web_fetch`, `mcp__cowork__launch_code_session`, `mcp__cowork__present_files`, `mcp__cowork__request_cowork_directory`, `mcp__cowork__allow_cowork_file_delete`, `mcp__mcp-registry__search_mcp_registry`, `mcp__mcp-registry__suggest_connectors`, `mcp__plugins__search_plugins`, `mcp__plugins__suggest_plugin_install`. New built-in disallowed: `Bash`, `NotebookEdit`, `REPL`, `JavaScript`, `WebFetch`.
 
 ### 2. `--brief` flag injection
 
@@ -902,6 +902,8 @@ These methods exist in cowork-svc.exe (from binary string analysis) but are not 
 **v1.2.234:** No new RPC methods. Protocol remains at 21 methods and 8 event types.
 
 **v1.569.0:** New RPC method `sendGuestResponse` (22 methods, 8 event types). Used for the plugin permission bridge to deliver host responses back to VM guest processes.
+
+**v1.1062.0:** No new RPC methods. Protocol remains at 22 methods and 8 event types. All changes are in the Electron app layer (onboarding, search, deploy, marketplace, connectors, auto-fix, egress blocking).
 
 ---
 

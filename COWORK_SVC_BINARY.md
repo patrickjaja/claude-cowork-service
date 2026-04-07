@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis — v1.569.0
+# Cowork Service Binary Analysis — v1.1062.0
 
 ## Binary Overview
 
@@ -69,16 +69,16 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (v1.569.0)
+## cowork-svc.exe Deep Analysis (v1.1062.0)
 
 | Property | Value |
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
 | **Module** | github.com/anthropics/cowork-win32-service |
-| **Build date** | 2026-04-03 |
-| **Size** | 11,186,000 bytes |
-| **SHA256** | a31c0aed813d1a8384c31e6fdbcc0fc4b48c9c4d5ebefe659dea274a06101387 |
+| **Build date** | 2026-04-06 |
+| **Size** | 11,177,808 bytes |
+| **SHA256** | d01ab801c2b57f14a1a8d2f2c8d4ca0fd856bf27569e0e24d6f2a8de086ce542 |
 
 ### Go Module Structure (from binary strings)
 
@@ -145,7 +145,8 @@ Three packages: `main`, `pipe`, `vm`
 
 **TLS/CA:**
 - installHostCACertificates — TLS CA injection
-- `vm.LoadTrustedCACertificates` — host CA cert loading
+- `vm.LoadTrustedCACertificates` — host CA cert loading (refactored in v1.1062.0 to use `enumerateRootStore` helper)
+- `vm.enumerateRootStore` — *(new in v1.1062.0)* Windows certificate root store enumeration
 
 **HCS (Host Compute Service) API:**
 - `vm.CreateComputeSystem`, `vm.OpenComputeSystem`, `vm.EnumerateComputeSystems`
@@ -192,13 +193,15 @@ Three packages: `main`, `pipe`, `vm`
 
 **v1.569.0:** New handler `handleSendGuestResponse` for plugin permission bridge guest responses. Binary grew ~11KB.
 
+**v1.1062.0:** No new handlers. Internal cert handling refactored (`LoadTrustedCACertificates` → `enumerateRootStore`). New `vm/rpc_types.go` source file (type refactor, not new types). Binary shrank 8KB.
+
 ---
 
-## bin/ Directory Checksums (v1.569.0)
+## bin/ Directory Checksums (v1.1062.0)
 
 | File | SHA256 |
 |------|--------|
-| cowork-svc.exe | a31c0aed813d1a8384c31e6fdbcc0fc4b48c9c4d5ebefe659dea274a06101387 |
+| cowork-svc.exe | d01ab801c2b57f14a1a8d2f2c8d4ca0fd856bf27569e0e24d6f2a8de086ce542 |
 | cowork-plugin-shim.sh | 2fbef5ee6c07c26a1f7cd9204e1b6d37537edd2b96c0ce025010b890cb5935e7 |
 | chrome-native-host.exe | *(check with sha256sum)* |
 | smol-bin.x64.vhdx | *(check with sha256sum)* |
@@ -210,7 +213,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.569.0 |
+| **Package** | @ant/desktop v1.1062.0 |
 | **Electron** | 40.8.5 |
 | **Node requirement** | >=22.0.0 |
 
@@ -246,20 +249,35 @@ Three packages: `main`, `pipe`, `vm`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
 
+### New in v1.1062.0
+
+- **Cowork onboarding system** — New `cowork-onboarding` MCP server with `show_onboarding_role_picker` tool; `setup-cowork` skill providing guided onboarding flow (role picking, skill intro, connector intro). Gate-checked, scoped to `sessionType==="cowork"`
+- **Cowork search subsystem** — New `[cowork-search]` worker using `transcriptSearchWorker.js`; new IPC methods `searchSessions(query, options)` on `LocalSessions` and `LocalAgentModeSessions`
+- **Session file operations** — `readFileAtCwd`, `pickFileAtCwd`, `pickSessionFile`, `writeSessionFile` (with optional hash-based CAS)
+- **Deploy/preview system** — `deployPreview`, `suggestDeployName`, `unpublishDeploy` IPC methods; `deployEvent` event dispatched to renderer
+- **Marketplace enhancements** — `createAccountMarketplace`, `listAccountMarketplaces`, `uploadAccountPlugin`, `fetchOrgMarketplaceNames` IPC methods
+- **Connectors concept** — New MCP tools: `suggest_connectors`, enhanced `search_mcp_registry`; part of onboarding flow
+- **Transcript feedback** — `getTranscriptFeedback`, `submitTranscriptFeedback` IPC methods
+- **Auto-fix feature** — `setAutoFixEnabled(sessionId, enabled)` per-session toggle; persisted in session state and GitHub PR config
+- **Cowork egress blocking** — New `cowork-egress-blocked` constant for workspace MCP server; network egress control with IP range detection
+- **Expanded disallowed tools** — Bridge/dispatch disallowed list now includes `show_onboarding_role_picker`; CU-only mode adds `mcp__mcp-registry__suggest_connectors`, `mcp__plugins__suggest_plugin_install`, and more
+- **Removed settings** — `isClaudeCodeForDesktopEnabled`, `isDesktopExtensionEnabled`, `autoUpdaterEnforcementHours`, `setCiMonitorEnabled`, `forceLoginOrgUUID`, `customDeploymentUrl` removed
+- **Binary changes** — cowork-svc.exe internal cert handling refactored (`enumerateRootStore`), new `vm/rpc_types.go` source file. No new RPC methods. Binary shrank 8KB
+- **No pipe protocol changes** — All 22 RPC methods, 8 event types, spawn parameters, and wire format unchanged
+- **SDK versions updated** — claude-agent-sdk 0.2.92 (was 0.2.87), claude-agent-sdk-future 0.2.93-dev (was 0.2.90-dev), conway-client updated
+
 ### Key Dependency Versions
 
-*(verified for v1.569.0 — unchanged from v1.2.234)*
+*(verified for v1.1062.0)*
 
-| Package | Version | Changed from v1.1.9669 |
+| Package | Version | Changed from v1.569.0 |
 |---------|---------|------------------------|
-| @anthropic-ai/claude-agent-sdk | 0.2.87 | — |
-| @anthropic-ai/claude-agent-sdk-future | 0.2.90-dev.20260331 | was 0.2.86-dev.20260327 |
-| @anthropic-ai/conway-client | 0.2.0-dev.20260325 | — |
+| @anthropic-ai/claude-agent-sdk | 0.2.92 | was 0.2.87 |
+| @anthropic-ai/claude-agent-sdk-future | 0.2.93-dev.20260403 | was 0.2.90-dev.20260331 |
+| @anthropic-ai/conway-client | 0.2.0-dev.20260403 | was 0.2.0-dev.20260325 |
 | @anthropic-ai/mcpb | 2.1.2 | — |
 | @anthropic-ai/sdk | ^0.70.0 | — |
-| @modelcontextprotocol/sdk | 1.28.0 | — |
-| electron | 40.8.5 | was 40.4.1 |
-| playwright-core | 1.57.0 | — |
+| electron | 40.8.5 | — |
 | typescript | ~5.8.3 | — |
 | zod | ^3.25.64 | — |
 | ws | ^8.18.0 | — |
@@ -296,6 +314,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.1062.0 | 11,177,808 bytes | Internal cert refactor (`enumerateRootStore`), new `vm/rpc_types.go`; no new RPC methods; SDK 0.2.92; binary shrank 8KB |
 | 1.569.0 | 11,186,000 bytes | New RPC method `sendGuestResponse` (plugin permission bridge); binary grew ~11KB |
 | 1.2.234 | 11,174,736 bytes | Rebuild only; Electron 40.8.5, dispatchCodeTasksPermissionMode, plugin permission bridge mounts |
 | 1.1.9669 | 11,174,736 bytes | New: cowork-plugin-shim.sh, conda disk support, plugin system, coworkArtifact.js |
