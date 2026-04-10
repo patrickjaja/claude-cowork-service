@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis — v1.1348.0
+# Cowork Service Binary Analysis — v1.1617.0
 
 ## Binary Overview
 
@@ -69,16 +69,16 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (v1.1348.0)
+## cowork-svc.exe Deep Analysis (v1.1617.0)
 
 | Property | Value |
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
 | **Module** | github.com/anthropics/cowork-win32-service |
-| **Build date** | 2026-04-08 |
-| **Size** | 11,177,808 bytes |
-| **SHA256** | 2432ded6cabcb9a5c85bfec696b7388ae46e00e16330f1002b3880822763dd51 |
+| **Build date** | 2026-04-09 |
+| **Size** | 11,179,344 bytes |
+| **SHA256** | 7719a2745a85440af1692086e8f931158c79bd06ff4f426ae48fe0b0c2c876a9 |
 
 ### Go Module Structure (from binary strings)
 
@@ -197,13 +197,15 @@ Three packages: `main`, `pipe`, `vm`
 
 **v1.1348.0:** No new handler functions. Rebuild only — same size (11,177,808 bytes), same Go version (go1.24.13). Updated build timestamps and VCS revision.
 
+**v1.1617.0:** No new handler functions. Rebuild with minor size increase (11,177,808 → 11,179,344 bytes, +1.5 KB). Same Go version (go1.24.13). Updated build timestamps, VCS revision, and embedded TLS certificates (date rotation).
+
 ---
 
-## bin/ Directory Checksums (v1.1348.0)
+## bin/ Directory Checksums (v1.1617.0)
 
 | File | SHA256 |
 |------|--------|
-| cowork-svc.exe | 2432ded6cabcb9a5c85bfec696b7388ae46e00e16330f1002b3880822763dd51 |
+| cowork-svc.exe | 7719a2745a85440af1692086e8f931158c79bd06ff4f426ae48fe0b0c2c876a9 |
 | cowork-plugin-shim.sh | 2fbef5ee6c07c26a1f7cd9204e1b6d37537edd2b96c0ce025010b890cb5935e7 |
 | chrome-native-host.exe | *(check with sha256sum)* |
 | smol-bin.x64.vhdx | *(check with sha256sum)* |
@@ -215,7 +217,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.1348.0 |
+| **Package** | @ant/desktop v1.1617.0 |
 | **Electron** | 40.8.5 |
 | **Node requirement** | >=22.0.0 |
 
@@ -251,6 +253,18 @@ Three packages: `main`, `pipe`, `vm`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
 
+### New in v1.1617.0
+
+- **`coworkEgressAllowedHosts` admin setting** — New enterprise/MDM-configurable egress allowlist that merges into the existing `allowedDomains` spawn parameter. Desktop resolves the merge before sending via RPC, so no cowork-svc protocol change needed
+- **`canUseTool` VM path guard** — Desktop now blocks host-loop tools from operating on `/sessions/` paths (Desktop-side enforcement, no protocol impact)
+- **`cowork-plugin-shim.sh` integration** — Desktop now copies the shim script into the `.cowork-lib` mount during session setup (was previously present as a file but not actively copied)
+- **`_syncPlugins` timeout** — Plugin sync now uses a 5-second timeout for account resolution
+- **`getSessionStorageDir` replaces `mountFolder`** — Internal Desktop refactor of how the cowork MCP tools factory gets session context (no RPC protocol change)
+- **`request_cowork_directory` storage guard** — Desktop prevents mounting the session's own internal storage directory as a cowork directory
+- **No new RPC methods** — Protocol remains at 22 methods and 8 event types
+- **SDK versions unchanged** — Same Electron 40.8.5, claude-agent-sdk 0.2.92, claude-agent-sdk-future 0.2.93-dev, conway-client unchanged
+- **cowork-svc.exe**: Minor rebuild (+1.5 KB), same Go version (go1.24.13), TLS certificate date rotation, no new handler functions
+
 ### New in v1.1348.0
 
 - **Rebuild only** — No new features, tools, or protocol changes. Minified variable names changed (different build), IPC bridge UUID updated, same SDK versions and Electron version as v1.1062.0
@@ -275,7 +289,7 @@ Three packages: `main`, `pipe`, `vm`
 
 ### Key Dependency Versions
 
-*(verified for v1.1348.0 — identical to v1.1062.0)*
+*(verified for v1.1617.0 — identical to v1.1348.0)*
 
 | Package | Version | Changed from v1.569.0 |
 |---------|---------|------------------------|
@@ -321,6 +335,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.1617.0 | 11,179,344 bytes | Rebuild +1.5 KB; TLS cert rotation; no new RPC methods; new Desktop features: coworkEgressAllowedHosts, canUseTool VM path guard, plugin shim integration |
 | 1.1348.0 | 11,177,808 bytes | Rebuild only — same size, same Go version, updated timestamps/VCS revision; no new RPC methods; SDK versions unchanged |
 | 1.1062.0 | 11,177,808 bytes | Internal cert refactor (`enumerateRootStore`), new `vm/rpc_types.go`; no new RPC methods; SDK 0.2.92; binary shrank 8KB |
 | 1.569.0 | 11,186,000 bytes | New RPC method `sendGuestResponse` (plugin permission bridge); binary grew ~11KB |

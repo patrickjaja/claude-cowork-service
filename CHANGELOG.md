@@ -7,13 +7,19 @@ All notable changes to claude-cowork-service will be documented in this file.
 ## 1.0.45 — 2026-04-08
 
 ### Changed
-- **Upstream update to Claude Desktop v1.1348.0** (from v1.1062.0)
-- **cowork-svc.exe**: Rebuild only — same size (11,177,808 bytes), same Go version (go1.24.13), no new RPC methods or handler functions. Updated build timestamps and VCS revision
+- **Upstream update to Claude Desktop v1.1617.0** (from v1.1348.0)
+- **cowork-svc.exe**: Rebuild with minor size increase (+1.5 KB, 11,177,808 → 11,179,344 bytes), same Go version (go1.24.13), no new RPC methods or handler functions. TLS certificate date rotation, updated build timestamps and VCS revision
 - **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums
-- **SDK versions unchanged** — Electron 40.8.5, claude-agent-sdk 0.2.92, MCP SDK 1.28.0
+- **SDK versions unchanged** — Electron 40.8.5, claude-agent-sdk 0.2.92, claude-agent-sdk-future 0.2.93-dev, conway-client unchanged
 - **No Go code changes needed** — all 22 RPC methods, 8 event types, spawn parameters, and wire format are identical
-- **Minor Desktop-side enhancement**: Plugin MCPs now refresh after uninstall; IPC bridge UUID updated (no protocol impact)
-- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.1348.0
+- **New Desktop-side features** (no pipe protocol impact):
+  - `coworkEgressAllowedHosts` admin setting — enterprise/MDM-configurable egress allowlist, merges into existing `allowedDomains` spawn param (Desktop resolves before RPC)
+  - `canUseTool` VM path guard — blocks host-loop tools from operating on `/sessions/` paths
+  - `cowork-plugin-shim.sh` integration — Desktop now actively copies shim script into `.cowork-lib` mount during session setup
+  - `request_cowork_directory` storage guard — prevents mounting session's own internal storage directory
+  - `_syncPlugins` timeout — plugin sync now has 5-second timeout for account resolution
+  - `getSessionStorageDir` replaces `mountFolder` — internal Desktop refactor (no RPC change)
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.1617.0
 
 ## 1.0.44 — 2026-04-07
 
