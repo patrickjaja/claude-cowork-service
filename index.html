@@ -27,7 +27,7 @@ curl -fsSL https://patrickjaja.github.io/claude-cowork-service/gpg-key.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/claude-cowork-service.gpg
 
 # Add repository
-echo "deb [signed-by=/etc/apt/keyrings/claude-cowork-service.gpg arch=amd64] https://patrickjaja.github.io/claude-cowork-service/deb/ ./" \
+echo "deb [signed-by=/etc/apt/keyrings/claude-cowork-service.gpg arch=$(dpkg --print-architecture)] https://patrickjaja.github.io/claude-cowork-service/deb/ ./" \
   | sudo tee /etc/apt/sources.list.d/claude-cowork-service.list
 
 # Install

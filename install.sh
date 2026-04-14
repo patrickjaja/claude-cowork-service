@@ -23,9 +23,15 @@ curl -fsSL "$REPO_URL/gpg-key.asc" | gpg --dearmor -o "$KEYRING_PATH"
 chmod 644 "$KEYRING_PATH"
 echo "  GPG key installed to $KEYRING_PATH"
 
+# Detect architecture for APT
+case "$(dpkg --print-architecture)" in
+  arm64)  APT_ARCH="arm64" ;;
+  *)      APT_ARCH="amd64" ;;
+esac
+
 # Add repository source
 cat > "$SOURCES_PATH" <<EOF
-deb [signed-by=$KEYRING_PATH arch=amd64] $REPO_URL/deb/ ./
+deb [signed-by=$KEYRING_PATH arch=$APT_ARCH] $REPO_URL/deb/ ./
 EOF
 echo "  Repository added to $SOURCES_PATH"
 
