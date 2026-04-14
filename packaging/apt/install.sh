@@ -26,7 +26,8 @@ echo "  GPG key installed to $KEYRING_PATH"
 # Detect architecture for APT
 case "$(dpkg --print-architecture)" in
   arm64)  APT_ARCH="arm64" ;;
-  *)      APT_ARCH="amd64" ;;
+  amd64)  APT_ARCH="amd64" ;;
+  *)      echo "Error: Unsupported architecture: $(dpkg --print-architecture) (supported: amd64, arm64)"; exit 1 ;;
 esac
 
 # Add repository source

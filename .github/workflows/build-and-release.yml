@@ -356,7 +356,7 @@ jobs:
 
             **Arch Linux (AUR):** `yay -S claude-cowork-service`
 
-            **Any distro (auto-detects arch):** `curl -fsSL .../scripts/install.sh | bash`
+            **Any distro (auto-detects arch):** `curl -fsSL https://raw.githubusercontent.com/patrickjaja/claude-cowork-service/main/scripts/install.sh | bash`
 
       - name: Upload RPM files for signing
         uses: actions/upload-artifact@v4
@@ -365,7 +365,7 @@ jobs:
           path: |
             ${{ steps.rpm.outputs.rpm_file }}
             ${{ steps.rpm_arm64.outputs.rpm_file }}
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 1
 
       - name: Deploy APT Repository
