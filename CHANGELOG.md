@@ -4,6 +4,8 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+## 1.0.46 — 2026-04-14
+
 ### Changed
 - **Upstream update to Claude Desktop v1.2278.0** (from v1.1617.0)
 - **cowork-svc.exe**: Binary grew 13.1% (11,179,344 → 12,643,664 bytes) due to new WPAD/PAC proxy auto-discovery feature linking full `net/http`, `crypto/tls`, and `compress/flate` packages. Same Go version (go1.24.13). No new RPC handler functions. New VM-internal features: `detectAutoProxyConfigURL`, `fetchPACScript`, `resolveWPADAndResend`. New JSON fields `pacScript` and `hostLoopbackIP` (both VM-internal proxy config)
