@@ -14,6 +14,14 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# Detect and validate architecture
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|aarch64) ;;
+  *) echo "Error: Unsupported architecture: $ARCH (supported: x86_64, aarch64)"; exit 1 ;;
+esac
+echo "  Detected architecture: $ARCH"
+
 echo "Setting up Claude Cowork Service RPM repository..."
 
 # Import GPG key
