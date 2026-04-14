@@ -1,14 +1,14 @@
 Package: claude-cowork-service
-Version: 1.0.46
+Version: 1.0.47
 Architecture: amd64
 Maintainer: Patrick Jaja <patrick@jaja.dev>
 Recommends: systemd
 Provides: claude-cowork-service
-Filename: amd64/claude-cowork-service_1.0.46_amd64.deb
-Size: 2325720
-MD5sum: e99a717ba48a194d8730bc3b619bc8d6
-SHA1: 5c71d6d35d35af6613bf5b51120f9ea6857fffde
-SHA256: d02ba811629b5fa4311fdf2a8cf071689544e5cd652cd52c91e721aabb1470e8
+Filename: amd64/claude-cowork-service_1.0.47_amd64.deb
+Size: 2328788
+MD5sum: ac8cfef25f6d3f9b224c6ea4e575c702
+SHA1: 044d945a4b87b3d155755a992306c549338bfab1
+SHA256: 543e62a1964e15e70c695250ba2ca5bc5a3793e1b8b8219f50e5a386ec6ab4bd
 Section: utils
 Priority: optional
 Homepage: https://github.com/patrickjaja/claude-cowork-service
@@ -18,16 +18,16 @@ Description: Native Linux backend for Claude Desktop's Cowork feature
  expects, running commands directly on the host instead of in a VM.
 
 Package: claude-cowork-service
-Version: 1.0.46
+Version: 1.0.47
 Architecture: arm64
 Maintainer: Patrick Jaja <patrick@jaja.dev>
 Recommends: systemd
 Provides: claude-cowork-service
-Filename: arm64/claude-cowork-service_1.0.46_arm64.deb
-Size: 2172618
-MD5sum: 7d06ea9bb7251dcbf4748cdc21bb5afc
-SHA1: 14b1da1c436fc72e920bb05562f4c8f8bbcfb74e
-SHA256: eaf6fc5f04ed66a4b8fe93065112883e760a6bb41fc4181811285f198219ff76
+Filename: arm64/claude-cowork-service_1.0.47_arm64.deb
+Size: 2172578
+MD5sum: 42749650412502a2817fbc64bfff524a
+SHA1: bb44d9ada28dc3870a6131699321ca739574701f
+SHA256: db39c9065340098eb776f853ad2d044da2be8ad3aa22ed8238836a74d635efe8
 Section: utils
 Priority: optional
 Homepage: https://github.com/patrickjaja/claude-cowork-service
