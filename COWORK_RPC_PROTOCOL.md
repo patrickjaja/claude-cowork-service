@@ -1,4 +1,4 @@
-# Cowork RPC Protocol Reference — v1.2773.0
+# Cowork RPC Protocol Reference — v1.3036.0
 
 > **This document is the single source of truth for the protocol between Claude Desktop and cowork-svc.**
 > Re-validate on every upstream Claude Desktop version update.
@@ -927,6 +927,10 @@ These methods exist in cowork-svc.exe (from binary string analysis) but are not 
 **v1.1617.0:** No new RPC methods. Protocol remains at 22 methods and 8 event types. Desktop-side additions: `coworkEgressAllowedHosts` admin egress allowlist (merges into existing `allowedDomains` spawn param), `canUseTool` VM path guard, `cowork-plugin-shim.sh` session integration, `request_cowork_directory` storage guard. All are Desktop-side enforcement — no wire protocol changes.
 
 **v1.2278.0:** No new RPC methods. Protocol remains at 22 methods and 8 event types. cowork-svc.exe grew 13.1% from WPAD/PAC proxy auto-discovery (VM-internal only). All changes are Desktop-side: new IPC handlers (`forkSession`, `rewind`, `summarizeTranscript`, `vertexAuth`, `setBundledSkills`, `cowork.sample()`), new feature flags (`coworkWebFetchViaApi`, `vmEgressPolicy`), Electron 41.2.0, SDK 0.2.101. Wire protocol unchanged.
+
+**v1.2773.0:** No new RPC methods. Protocol remains at 22 methods and 8 event types. cowork-svc.exe minor rebuild (+512 bytes). SDK versions rolled back. All changes Desktop-side: `[cowork-deletion]` event logging, `dispatchOnCliOpAlwaysAllowed`, `coworkWebSearchEnabled` gate removed. Wire protocol unchanged.
+
+**v1.3036.0:** No new RPC methods. Protocol remains at 22 methods and 8 event types. cowork-svc.exe gained host CA cert store enumeration on Windows (`enumerateCertStore`, `certChainsToTrustedRoot`) — Windows-only, no wire impact. Desktop-side: new spawn env var `ENABLE_PROMPT_CACHING_1H=1` (passed through transparently), new `cowork-plugin-oauth` local storage, new `cu_lock_released` / `cu_teach_session` / `lam_mcp_servers_setup_summary` telemetry, new `setup-cowork` skill, new `cowork_lock_midsession_model` gate. Wire protocol unchanged.
 
 ---
 

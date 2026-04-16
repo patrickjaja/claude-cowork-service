@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis — v1.2773.0
+# Cowork Service Binary Analysis — v1.3036.0
 
 ## Binary Overview
 
@@ -20,7 +20,7 @@ The extract script pulls all files from the same directory level as cowork-svc.e
 | default.clod | 97 KB | Default configuration/data |
 | *.json (locale files) | ~15-75 KB each | UI translations (de-DE, en-US, es-419, etc.) |
 | *.png / *.ico | ~2-4 KB each | Tray icons (light/dark, various DPI) |
-| .version | 8 bytes | Version string ("1.2581.0") |
+| .version | 8 bytes | Version string ("1.3036.0") |
 
 ## Windows Architecture
 
@@ -69,16 +69,16 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (v1.2773.0)
+## cowork-svc.exe Deep Analysis (v1.3036.0)
 
 | Property | Value |
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
 | **Module** | github.com/anthropics/cowork-win32-service |
-| **Build date** | 2026-04-15 |
-| **Size** | 12,644,176 bytes |
-| **SHA256** | c0ecb0810e412440290ebcfac94e283d04ed1aff3a68ddba47b861f80a42c7f2 |
+| **Build date** | 2026-04-16 |
+| **Size** | 12,648,272 bytes |
+| **SHA256** | 6958c160af22d087ecb2e3af5a261c37c22ec6fe57a516124fcf6ac7a3a67fd3 |
 
 ### Go Module Structure (from binary strings)
 
@@ -145,8 +145,10 @@ Three packages: `main`, `pipe`, `vm`
 
 **TLS/CA:**
 - installHostCACertificates — TLS CA injection
-- `vm.LoadTrustedCACertificates` — host CA cert loading (refactored in v1.1062.0 to use `enumerateRootStore` helper)
+- `vm.LoadTrustedCACertificates` — host CA cert loading (refactored in v1.1062.0 to use `enumerateRootStore` helper; gained an extra closure `Printf.func4` in v1.3036.0)
 - `vm.enumerateRootStore` — *(new in v1.1062.0)* Windows certificate root store enumeration
+- `vm.enumerateCertStore` — *(new in v1.3036.0)* generalized Windows certificate store enumeration (beyond just root store)
+- `vm.certChainsToTrustedRoot` — *(new in v1.3036.0)* builds certificate chains to trusted root via `windows.CertGetCertificateChain` / `CertFreeCertificateChain`
 
 **HCS (Host Compute Service) API:**
 - `vm.CreateComputeSystem`, `vm.OpenComputeSystem`, `vm.EnumerateComputeSystems`
@@ -203,15 +205,16 @@ Three packages: `main`, `pipe`, `vm`
 
 ---
 
-## bin/ Directory Checksums (v1.2773.0)
+## bin/ Directory Checksums (v1.3036.0)
 
 | File | SHA256 |
 |------|--------|
-| cowork-svc.exe | c0ecb0810e412440290ebcfac94e283d04ed1aff3a68ddba47b861f80a42c7f2 |
-| cowork-plugin-shim.sh | 2fbef5ee6c07c26a1f7cd9204e1b6d37537edd2b96c0ce025010b890cb5935e7 |
-| chrome-native-host.exe | *(check with sha256sum)* |
-| smol-bin.x64.vhdx | *(check with sha256sum)* |
-| default.clod | *(check with sha256sum)* |
+| cowork-svc.exe | 6958c160af22d087ecb2e3af5a261c37c22ec6fe57a516124fcf6ac7a3a67fd3 |
+| cowork-plugin-shim.sh | *(unchanged from v1.2773.0)* |
+| chrome-native-host.exe | eae1503dfd5a080aac21f11f008d35d7c00c4fbb9ee31ffa600ec7fdcdb83716 |
+| smol-bin.x64.vhdx | 231288e915bbf2cfb863bc172a5c27d9a799b4f76d09487801c86a91992a3011 |
+| default.clod | d601ae9bf53de2d6d4a202c3fef1bd9ef2898932483e9df6a6a3dd99eb240796 |
+| app.asar | a1a8f2d640908281526445f1aab1ba46e4cf61cb2e55a59ef3ec407d09b29015 |
 
 ---
 
@@ -219,7 +222,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.2773.0 |
+| **Package** | @ant/desktop v1.3036.0 |
 | **Electron** | 41.2.0 |
 | **Node requirement** | >=22.0.0 |
 
@@ -254,6 +257,21 @@ Three packages: `main`, `pipe`, `vm`
 - **Artifact lifecycle** — New telemetry events: `cowork_artifacts_created`, `cowork_artifacts_updated`, `cowork_artifacts_imported`, `cowork_artifacts_exported`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
+
+### New in v1.3036.0
+
+- **cowork-svc.exe**: Minor rebuild (+4,096 bytes, 12,644,176 → 12,648,272 bytes). Same Go version (go1.24.13). New Windows-only certificate store helpers: `vm.enumerateCertStore`, `vm.certChainsToTrustedRoot` (use `windows.CertGetCertificateChain` / `CertFreeCertificateChain`). `vm.LoadTrustedCACertificates` gained one additional closure (`Printf.func4`). New error string `"[VM] Failed to load host CA certificates: %v"`. No new RPC handler functions.
+- **`ENABLE_PROMPT_CACHING_1H=1`** — New environment variable injected by Desktop into every spawned Claude Code process (alongside `CLAUDE_CODE_IS_COWORK=1`, `DISABLE_MICROCOMPACT=1`, etc.). Passed through transparently by our backend — no code change required.
+- **`cowork-plugin-oauth` storage** — New local `conf` store (`new CD({name:"cowork-plugin-oauth",configFileMode:384})`) under `[PluginOAuthStorage]` for per-plugin OAuth credentials. Desktop-side local file, not a pipe RPC.
+- **Cowork artifact lifecycle events** — New `[CoworkArtifacts] Created` and `[CoworkArtifacts] Imported` log lines alongside existing `Updated`/`Exported`. New telemetry: `cowork_artifacts_created`, `cowork_artifacts_imported`.
+- **`cu_lock_released`, `cu_teach_session`, `lam_mcp_servers_setup_summary`** — New telemetry events for computer-use lock tracking, teach-mode sessions, and MCP server setup summaries.
+- **`cowork_lock_midsession_model`** — New feature gate — when enabled, prevents mid-session model changes in cowork sessions (Desktop-side enforcement only).
+- **Feature gate `3444158716`** — New gate keyed on `sessionType==="cowork"` (purpose not fully identifiable from minified code).
+- **GrowthBook gates** — New top-level gates `louderPenguin` and `operon` added alongside existing `coworkKappa` (non-cowork features).
+- **`setup-cowork` skill** — New built-in skill command (`{name:"setup-cowork",description:...,prompt:...}`) driven by feature flag `4066504968`/`skillPrompt`.
+- **IPC UUID change** — Internal Electron IPC bridge UUID changed (`f189fbc9...` → `08aa66e6-e7d3-4eb8-95ac-7e3f613ce196`), no protocol impact.
+- **SDK versions unchanged** — Same Electron 41.2.0, same claude-agent-sdk 0.2.92, claude-agent-sdk-future 0.2.93-dev.
+- **No new RPC methods** — Protocol remains at 22 methods and 8 event types. Wire format, spawn parameters, and event structures are identical to v1.2773.0.
 
 ### New in v1.2773.0
 
@@ -369,6 +387,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.3036.0 | 12,648,272 bytes | Rebuild +4 KB; new Windows cert store helpers (`enumerateCertStore`, `certChainsToTrustedRoot`); no new RPC methods; Desktop injects `ENABLE_PROMPT_CACHING_1H=1` env var; new `cowork-plugin-oauth` storage; new `cu_lock_released`/`cu_teach_session` telemetry; new `setup-cowork` skill; `cowork_lock_midsession_model` gate |
 | 1.2773.0 | 12,644,176 bytes | Rebuild +512 bytes; SDK rolled back (0.2.92); no new RPC methods; cowork-deletion event logging; dispatchOnCliOpAlwaysAllowed; coworkWebSearchEnabled gate removed |
 | 1.2581.0 | 12,643,664 bytes | Clean rebuild, same size; no new RPC methods; new `cowork-file` URL scheme for native file preview; `coworkNativeFilePreview` + `coworkKappa` feature flags; LibreOffice document conversion; permission routing split (cowork vs ccd); `getCodeStats` IPC method; plugin shim updated |
 | 1.2278.0 | 12,643,664 bytes | +13.1% size; WPAD/PAC proxy auto-discovery (net/http, crypto/tls linked); no new RPC methods; Electron 41.2.0; SDK 0.2.101; new Desktop features: cowork.sample(), forkSession, rewind, vertexAuth, coworkWebFetchViaApi |
