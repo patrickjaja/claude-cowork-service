@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis — v1.2581.0
+# Cowork Service Binary Analysis — v1.2773.0
 
 ## Binary Overview
 
@@ -69,16 +69,16 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (v1.2278.0)
+## cowork-svc.exe Deep Analysis (v1.2773.0)
 
 | Property | Value |
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
 | **Module** | github.com/anthropics/cowork-win32-service |
-| **Build date** | 2026-04-13 |
-| **Size** | 12,643,664 bytes |
-| **SHA256** | 9d256f73b3fbd33b2dd1c163220dc601da7acb5280a2c13b08c10a44141a33bf |
+| **Build date** | 2026-04-15 |
+| **Size** | 12,644,176 bytes |
+| **SHA256** | c0ecb0810e412440290ebcfac94e283d04ed1aff3a68ddba47b861f80a42c7f2 |
 
 ### Go Module Structure (from binary strings)
 
@@ -203,11 +203,11 @@ Three packages: `main`, `pipe`, `vm`
 
 ---
 
-## bin/ Directory Checksums (v1.2278.0)
+## bin/ Directory Checksums (v1.2773.0)
 
 | File | SHA256 |
 |------|--------|
-| cowork-svc.exe | 9d256f73b3fbd33b2dd1c163220dc601da7acb5280a2c13b08c10a44141a33bf |
+| cowork-svc.exe | c0ecb0810e412440290ebcfac94e283d04ed1aff3a68ddba47b861f80a42c7f2 |
 | cowork-plugin-shim.sh | 2fbef5ee6c07c26a1f7cd9204e1b6d37537edd2b96c0ce025010b890cb5935e7 |
 | chrome-native-host.exe | *(check with sha256sum)* |
 | smol-bin.x64.vhdx | *(check with sha256sum)* |
@@ -219,7 +219,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.2278.0 |
+| **Package** | @ant/desktop v1.2773.0 |
 | **Electron** | 41.2.0 |
 | **Node requirement** | >=22.0.0 |
 
@@ -254,6 +254,17 @@ Three packages: `main`, `pipe`, `vm`
 - **Artifact lifecycle** — New telemetry events: `cowork_artifacts_created`, `cowork_artifacts_updated`, `cowork_artifacts_imported`, `cowork_artifacts_exported`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
+
+### New in v1.2773.0
+
+- **SDK versions rolled back** — claude-agent-sdk 0.2.92 (was 0.2.101), claude-agent-sdk-future 0.2.93-dev (was 0.2.102-dev). All other dependency versions unchanged (Electron 41.2.0, conway-client, @modelcontextprotocol/sdk 1.28.0)
+- **cowork-svc.exe**: Minor rebuild (+512 bytes), same Go version (go1.24.13), no new RPC handler functions. Installer directory path moved from `lib/net45/` to `lib/net45/resources/`
+- **`[cowork-deletion]` event logging** — Desktop now POSTs session deletion events to API with retry logic (up to 5 attempts with backoff). Desktop-internal telemetry, not a pipe RPC
+- **`dispatchOnCliOpAlwaysAllowed`** — New renderer dispatch event for CLI operations that skip permission checks (Desktop-side)
+- **`coworkWebSearchEnabled` gate removed** — Web search gate check removed from session startup path; web search now always enabled for cowork sessions
+- **IPC UUID change** — Internal Electron IPC bridge UUID changed (`f189fbc9...`), no protocol impact
+- **Plugin shim unchanged** — Same SHA (`2fbef5ee...`), same behavior
+- **No new RPC methods** — Protocol remains at 22 methods and 9 event types
 
 ### New in v1.2278.0
 
@@ -311,16 +322,17 @@ Three packages: `main`, `pipe`, `vm`
 
 ### Key Dependency Versions
 
-*(verified for v1.2278.0)*
+*(verified for v1.2773.0)*
 
-| Package | Version | Changed from v1.1617.0 |
+| Package | Version | Changed from v1.2581.0 |
 |---------|---------|------------------------|
-| @anthropic-ai/claude-agent-sdk | 0.2.101 | was 0.2.92 |
-| @anthropic-ai/claude-agent-sdk-future | 0.2.102-dev.20260410 | was 0.2.93-dev.20260403 |
+| @anthropic-ai/claude-agent-sdk | 0.2.92 | was 0.2.101 (rolled back) |
+| @anthropic-ai/claude-agent-sdk-future | 0.2.93-dev.20260403 | was 0.2.102-dev.20260410 (rolled back) |
 | @anthropic-ai/conway-client | 0.2.0-dev.20260403 | unchanged |
 | @anthropic-ai/mcpb | 2.1.2 | — |
 | @anthropic-ai/sdk | ^0.70.0 | — |
-| electron | 41.2.0 | was 40.8.5 |
+| @modelcontextprotocol/sdk | 1.28.0 | — |
+| electron | 41.2.0 | unchanged |
 | typescript | ~5.8.3 | — |
 | zod | ^3.25.64 | — |
 | ws | ^8.18.0 | — |
@@ -357,6 +369,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.2773.0 | 12,644,176 bytes | Rebuild +512 bytes; SDK rolled back (0.2.92); no new RPC methods; cowork-deletion event logging; dispatchOnCliOpAlwaysAllowed; coworkWebSearchEnabled gate removed |
 | 1.2581.0 | 12,643,664 bytes | Clean rebuild, same size; no new RPC methods; new `cowork-file` URL scheme for native file preview; `coworkNativeFilePreview` + `coworkKappa` feature flags; LibreOffice document conversion; permission routing split (cowork vs ccd); `getCodeStats` IPC method; plugin shim updated |
 | 1.2278.0 | 12,643,664 bytes | +13.1% size; WPAD/PAC proxy auto-discovery (net/http, crypto/tls linked); no new RPC methods; Electron 41.2.0; SDK 0.2.101; new Desktop features: cowork.sample(), forkSession, rewind, vertexAuth, coworkWebFetchViaApi |
 | 1.1617.0 | 11,179,344 bytes | Rebuild +1.5 KB; TLS cert rotation; no new RPC methods; new Desktop features: coworkEgressAllowedHosts, canUseTool VM path guard, plugin shim integration |

@@ -4,6 +4,20 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- **Upstream update to Claude Desktop v1.2773.0** (from v1.2581.0)
+- **cowork-svc.exe**: Minor rebuild (+512 bytes, 12,643,664 → 12,644,176 bytes), same Go version (go1.24.13). No new RPC handler functions. Build metadata changed (cert dates, timestamps). Installer directory path moved from `lib/net45/` to `lib/net45/resources/`
+- **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums
+- **SDK versions rolled back** — claude-agent-sdk 0.2.92 (was 0.2.101), claude-agent-sdk-future 0.2.93-dev (was 0.2.102-dev). Electron 41.2.0, conway-client, @modelcontextprotocol/sdk 1.28.0 unchanged
+- **No Go code changes needed** — all 22 RPC methods, 9 event types, spawn parameters, and wire format are identical
+- **New Desktop-side features** (no pipe protocol impact):
+  - `[cowork-deletion]` event logging — Desktop now POSTs session deletion events to API with retry logic (up to 5 attempts with backoff)
+  - `dispatchOnCliOpAlwaysAllowed` — new renderer dispatch event for CLI operations that skip permission checks
+  - `coworkWebSearchEnabled` gate check removed from session startup — web search now always enabled for cowork sessions
+  - IPC UUID changed (`f189fbc9...`) — rebuild artifact, no protocol impact
+  - Plugin shim unchanged (same SHA `2fbef5ee...`)
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.2773.0
+
 ## 1.0.49 — 2026-04-14
 
 ## 1.0.48 — 2026-04-14

@@ -72,7 +72,7 @@ make test
 - `bin/` --- Extracted from Claude Desktop Windows installer (`cowork-svc.exe` lives alongside `app.asar`, locale JSONs, icons)
 - `vm-bundle/` --- VM images + config downloaded from Anthropic CDN
 - Both directories have `.version` files tracking the Claude Desktop version they were extracted from
-- Currently at version **1.2581.0**
+- Currently at version **1.2773.0**
 
 ## Version-Sensitive Artifacts
 
