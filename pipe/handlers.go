@@ -2,12 +2,13 @@ package pipe
 
 import (
 	"encoding/json"
-	"log"
 	"net"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/patrickjaja/claude-cowork-service/logx"
 )
 
 // Handler dispatches RPC methods to the VM backend.
@@ -25,17 +26,15 @@ func NewHandler(backend VMBackend, debug bool) *Handler {
 func (h *Handler) Handle(conn net.Conn, payload []byte) {
 	var req Request
 	if err := json.Unmarshal(payload, &req); err != nil {
-		if h.debug {
-			log.Printf("Invalid JSON: %v", err)
-		}
+		logx.Debug("Invalid JSON: %v", err)
 		WriteError(conn, nil, -32700, "Parse error")
 		return
 	}
 
 	h.backend.Touch()
 
-	if h.debug && req.Method != "isGuestConnected" && req.Method != "isProcessRunning" {
-		log.Printf("RPC: %s (id=%v) params: %s", req.Method, req.ID, string(req.Params))
+	if req.Method != "isGuestConnected" && req.Method != "isProcessRunning" {
+		logx.Debug("RPC: %s (id=%v) params: %s", req.Method, req.ID, logx.Trunc(string(req.Params)))
 	}
 
 	switch req.Method {
@@ -84,9 +83,7 @@ func (h *Handler) Handle(conn net.Conn, payload []byte) {
 	case "sendGuestResponse":
 		h.handleSendGuestResponse(conn, req)
 	default:
-		if h.debug {
-			log.Printf("RPC: unknown method %q — returning success (passthrough)", req.Method)
-		}
+		logx.Debug("RPC: unknown method %q — returning success (passthrough)", req.Method)
 		WriteResponse(conn, req.ID, nil)
 	}
 }
@@ -282,17 +279,13 @@ func (h *Handler) handleIsGuestConnected(conn net.Conn, req Request) {
 }
 
 func (h *Handler) handleSpawn(conn net.Conn, req Request) {
-	if h.debug {
-		log.Printf("spawn raw params: %s", string(req.Params))
-	}
+	logx.Debug("spawn raw params: %s", logx.Trunc(string(req.Params)))
 	var p spawnParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if h.debug {
-		log.Printf("spawn parsed: name=%q cmd=%q args=%v cwd=%q env=%v", p.Name, p.Cmd, p.Args, p.Cwd, p.Env)
-	}
+	logx.Debug("spawn parsed: name=%q cmd=%q args=%v cwd=%q env=%v", p.Name, p.Cmd, p.Args, p.Cwd, p.Env)
 	processID, err := h.backend.Spawn(p.Name, p.ID, p.Cmd, p.Args, p.Env, p.Cwd, p.AdditionalMounts, req.Params)
 	if err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
@@ -322,23 +315,12 @@ func (h *Handler) handleKill(conn net.Conn, req Request) {
 }
 
 func (h *Handler) handleWriteStdin(conn net.Conn, req Request) {
-	if h.debug {
-		log.Printf("writeStdin raw params: %s", string(req.Params))
-	}
 	var p writeStdinParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if h.debug {
-		log.Printf("writeStdin processId=%s data=%q", p.ProcessID, p.Data)
-		// Log full stdin data to trace skill invocations
-		if len(p.Data) > 5000 {
-			log.Printf("writeStdin FULL (truncated): %s...END", p.Data[:5000])
-		} else {
-			log.Printf("writeStdin FULL: %s", p.Data)
-		}
-	}
+	logx.Debug("writeStdin processId=%s data=%s", p.ProcessID, logx.Trunc(p.Data))
 	if err := h.backend.WriteStdin(p.ProcessID, []byte(p.Data)); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
@@ -422,6 +404,7 @@ func (h *Handler) handleSetDebugLogging(conn net.Conn, req Request) {
 	}
 	h.backend.SetDebugLogging(p.Enabled)
 	h.debug = p.Enabled
+	logx.SetDebug(p.Enabled)
 	WriteResponse(conn, req.ID, nil)
 }
 
@@ -446,26 +429,16 @@ func (h *Handler) handleSubscribeEvents(conn net.Conn, req Request) {
 		}
 		data, err := json.Marshal(event)
 		if err != nil {
-			if h.debug {
-				log.Printf("Failed to marshal event: %v", err)
-			}
+			logx.Debug("Failed to marshal event: %v", err)
 			return
 		}
-		if h.debug {
-			truncated := string(data)
-			if len(truncated) > 200 {
-				truncated = truncated[:200] + "..."
-			}
-			log.Printf("EVENT → client: %s", truncated)
-		}
+		logx.Debug("EVENT → client: %s", logx.Trunc(string(data)))
 		writeMu.Lock()
 		werr := WriteMessage(conn, data)
 		writeMu.Unlock()
 		if werr != nil {
 			atomic.StoreInt32(&cancelled, 1)
-			if h.debug {
-				log.Printf("Event write failed, cancelling subscription: %v", werr)
-			}
+			logx.Debug("Event write failed, cancelling subscription: %v", werr)
 		}
 	})
 	if err != nil {

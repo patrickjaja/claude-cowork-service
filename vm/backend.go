@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/patrickjaja/claude-cowork-service/logx"
 	"github.com/patrickjaja/claude-cowork-service/pipe"
 	"github.com/patrickjaja/claude-cowork-service/process"
 )
@@ -432,7 +433,7 @@ func (b *KvmBackend) Spawn(name string, id string, cmd string, args []string, en
 		b.emit(process.NewExitEvent(id, 1))
 		return id, nil
 	}
-	log.Printf("[kvm] spawn ack from guest: id=%s resp=%s", id, truncate(string(resp), 200))
+	log.Printf("[kvm] spawn ack from guest: id=%s resp=%s", id, logx.Trunc(string(resp)))
 
 	b.procMu.Lock()
 	b.processes[id] = struct{}{}
@@ -598,7 +599,7 @@ func (b *KvmBackend) runPendingSdkInstall() {
 		log.Printf("[kvm] installSdk forward failed: %v", err)
 		return
 	}
-	log.Printf("[kvm] installSdk ack from guest: resp=%s", truncate(string(resp), 200))
+	log.Printf("[kvm] installSdk ack from guest: resp=%s", logx.Trunc(string(resp)))
 }
 
 func (b *KvmBackend) AddApprovedOauthToken(name string, token string) error {

@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/patrickjaja/claude-cowork-service/logx"
 )
 
 const (
@@ -222,7 +224,7 @@ func (g *GuestBridge) handleMessage(raw []byte) {
 	}
 
 	if g.debug {
-		log.Printf("[kvm] guest message: %s", truncate(string(raw), 300))
+		log.Printf("[kvm] guest message: %s", logx.Trunc(string(raw)))
 	}
 
 	typ := jsonString(msg["type"])
@@ -274,7 +276,7 @@ func (g *GuestBridge) handleMessage(raw []byte) {
 	}
 
 	if g.debug {
-		log.Printf("[kvm] unhandled guest message: %s", truncate(string(raw), 200))
+		log.Printf("[kvm] unhandled guest message: %s", logx.Trunc(string(raw)))
 	}
 }
 
@@ -391,11 +393,4 @@ func normalizeID(raw json.RawMessage) string {
 		return strconv.FormatFloat(n, 'f', -1, 64)
 	}
 	return string(raw)
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
 }

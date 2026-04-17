@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/patrickjaja/claude-cowork-service/logx"
 	"github.com/patrickjaja/claude-cowork-service/native"
 	"github.com/patrickjaja/claude-cowork-service/pipe"
 	"github.com/patrickjaja/claude-cowork-service/vm"
@@ -34,6 +35,8 @@ func main() {
 	backendName := flag.String("backend", defaultBackend(), "Backend: native or kvm")
 	bundlesDir := flag.String("bundles-dir", defaultBundlesDir(), "VM bundles directory (kvm backend only)")
 	showVersion := flag.Bool("version", false, "Show version and exit")
+	logFullLines := flag.Bool("log-full-lines", false, "Don't truncate long log lines (JSON payloads, RPC params, events)")
+	logMaxLen := flag.Int("log-max-len", 160, "Max characters per log line before truncation (ignored with -log-full-lines)")
 	flag.Parse()
 
 	if *socketPath == "" {
@@ -45,11 +48,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *debug {
-		log.SetFlags(log.LstdFlags | log.Lshortfile)
-	} else {
-		log.SetFlags(log.LstdFlags)
-	}
+	fullLines := *logFullLines || os.Getenv("COWORK_LOG_FULL") == "1"
+	logx.Configure(*debug, fullLines, *logMaxLen)
 
 	log.Printf("cowork-svc-linux %s starting (%s backend)", version, *backendName)
 	log.Printf("Socket: %s", *socketPath)

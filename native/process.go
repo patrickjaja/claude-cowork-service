@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/patrickjaja/claude-cowork-service/logx"
 	"github.com/patrickjaja/claude-cowork-service/process"
 )
 
@@ -301,17 +302,17 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 		}
 
 		// Detect MCP control_request messages from the CLI.
-		if strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`) {
-			log.Printf("[native] >>>MCP-PROXY>>> %s %s control_request detected: %s", id, stream, truncateLine(line, 500))
+		if pt.debug && (strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`)) {
+			logx.Debug("[native] >>>MCP-PROXY>>> %s %s control_request detected: %s", id, stream, logx.Trunc(line))
 		}
 
 		if pt.debug {
-			truncated := truncateLine(line, 2000)
+			truncated := logx.Trunc(line)
 			// Highlight skill-related messages
 			if strings.Contains(strings.ToLower(line), "skill") || strings.Contains(line, "Unknown") {
-				log.Printf("[native] !!SKILL!! %s %s: %s", id, stream, truncated)
+				logx.Debug("[native] !!SKILL!! %s %s: %s", id, stream, truncated)
 			} else {
-				log.Printf("[native] %s %s: %s", id, stream, truncated)
+				logx.Debug("[native] %s %s: %s", id, stream, truncated)
 			}
 		}
 
@@ -462,7 +463,7 @@ func (pt *processTracker) tryHandlePresentFiles(lp *localProcess, line string) b
 			"response": map[string]interface{}{
 				"mcp_response": map[string]interface{}{
 					"result": map[string]interface{}{
-						"content":  contentItems,
+						"content": contentItems,
 						"isError": isError,
 					},
 					"jsonrpc": req.Request.Message.JSONRPC,
@@ -489,14 +490,6 @@ func (pt *processTracker) tryHandlePresentFiles(lp *localProcess, line string) b
 	}
 
 	return true
-}
-
-// truncateLine truncates a string to maxLen characters for logging.
-func truncateLine(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen] + "...[TRUNCATED]"
-	}
-	return s
 }
 
 // kill sends a signal to a process. If signal is empty, defaults to SIGTERM.
@@ -602,12 +595,12 @@ func (pt *processTracker) writeStdin(processID string, data []byte) error {
 	// session manager in response to control_request messages from the CLI.
 	// Log them prominently to observe the MCP proxy flow during the experiment.
 	if bytes.Contains(data, []byte(`"type":"control_response"`)) || bytes.Contains(data, []byte(`"type": "control_response"`)) {
-		log.Printf("[native] <<<MCP-PROXY<<< %s control_response detected: %s", processID, truncateLine(string(data), 500))
+		logx.Debug("[native] <<<MCP-PROXY<<< %s control_response detected: %s", processID, logx.Trunc(string(data)))
 	}
 
 	// Also detect initialize messages that may contain sdkMcpServers
 	if bytes.Contains(data, []byte(`sdkMcpServers`)) {
-		log.Printf("[native] <<<MCP-INIT<<< %s sdkMcpServers in writeStdin: %s", processID, truncateLine(string(data), 1000))
+		logx.Debug("[native] <<<MCP-INIT<<< %s sdkMcpServers in writeStdin: %s", processID, logx.Trunc(string(data)))
 	}
 
 	// Strip plugin prefix from skill invocations in user messages.
