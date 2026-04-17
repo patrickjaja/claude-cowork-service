@@ -1,4 +1,4 @@
-# Cowork RPC Protocol Reference — v1.3036.0
+# Cowork RPC Protocol Reference — v1.3109.0
 
 > **This document is the single source of truth for the protocol between Claude Desktop and cowork-svc.**
 > Re-validate on every upstream Claude Desktop version update.
@@ -931,6 +931,8 @@ These methods exist in cowork-svc.exe (from binary string analysis) but are not 
 **v1.2773.0:** No new RPC methods. Protocol remains at 22 methods and 8 event types. cowork-svc.exe minor rebuild (+512 bytes). SDK versions rolled back. All changes Desktop-side: `[cowork-deletion]` event logging, `dispatchOnCliOpAlwaysAllowed`, `coworkWebSearchEnabled` gate removed. Wire protocol unchanged.
 
 **v1.3036.0:** No new RPC methods. Protocol remains at 22 methods and 8 event types. cowork-svc.exe gained host CA cert store enumeration on Windows (`enumerateCertStore`, `certChainsToTrustedRoot`) — Windows-only, no wire impact. Desktop-side: new spawn env var `ENABLE_PROMPT_CACHING_1H=1` (passed through transparently), new `cowork-plugin-oauth` local storage, new `cu_lock_released` / `cu_teach_session` / `lam_mcp_servers_setup_summary` telemetry, new `setup-cowork` skill, new `cowork_lock_midsession_model` gate. Wire protocol unchanged.
+
+**v1.3109.0:** No new RPC methods. Protocol remains at 22 methods and 8 event types. cowork-svc.exe is a **clean rebuild with byte-identical size** (12,648,272 bytes) — only build metadata differs (new VCS revision `35cbf6530e05912137624cde0f075dc7f121fa60`, timestamp `2026-04-16T20:32:01Z`). No new handler functions or error strings. app.asar grew substantially (10.1 → 14.6 MB) but is entirely minifier symbol renames; all 22 of our RPC method names are still called by Desktop, and all session dispatch machinery (`CLAUDE_CODE_TAGS:\`lam_session_type:${sessionType}\``, `CLAUDE_CODE_BRIEF`, `disallowedTools`, `present_files`, `session_type:"cowork"`) is unchanged. VM bundle unchanged (same SHA `5680b11b...`, same checksums). SDK versions unchanged. **No Go code changes required.**
 
 ---
 

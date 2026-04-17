@@ -5,11 +5,15 @@ All notable changes to claude-cowork-service will be documented in this file.
 ## Unreleased
 
 ### Changed
-- **Upstream update to Claude Desktop v1.3036.0** (from v1.2773.0)
-- **cowork-svc.exe**: Minor rebuild (+4,096 bytes, 12,644,176 → 12,648,272 bytes), same Go version (go1.24.13). No new RPC handler functions. New Windows-only certificate store helpers: `vm.enumerateCertStore`, `vm.certChainsToTrustedRoot` (backed by `windows.CertGetCertificateChain` / `CertFreeCertificateChain`). New error string `"[VM] Failed to load host CA certificates: %v"`.
+- **Upstream update to Claude Desktop v1.3109.0** (from v1.3036.0)
+- **cowork-svc.exe**: Clean rebuild, **byte-identical size** (12,648,272 bytes), same Go version (go1.24.13). Only build metadata changed (VCS revision `35cbf6530e05912137624cde0f075dc7f121fa60`, build timestamp `2026-04-16T20:32:01Z`). No new handler functions, no new error strings.
 - **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums
+- **app.asar**: Grew significantly (10.1 → 14.6 MB extracted JS) but contents are overwhelmingly minifier symbol renames. All 22 of our RPC methods are still referenced, and session dispatch logic (`CLAUDE_CODE_TAGS`, `CLAUDE_CODE_BRIEF`, `disallowedTools`, `present_files`, `session_type:"cowork"`) is unchanged.
 - **SDK versions unchanged** — Electron 41.2.0, claude-agent-sdk 0.2.92, claude-agent-sdk-future 0.2.93-dev, @modelcontextprotocol/sdk 1.28.0
 - **No Go code changes needed** — all 22 RPC methods, 8 event types, spawn parameters, and wire format are identical
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.3109.0
+- **Prior upstream update to Claude Desktop v1.3036.0** (from v1.2773.0, commit `95c768f`)
+- **cowork-svc.exe** (v1.3036.0): Minor rebuild (+4,096 bytes, 12,644,176 → 12,648,272 bytes), same Go version (go1.24.13). No new RPC handler functions. New Windows-only certificate store helpers: `vm.enumerateCertStore`, `vm.certChainsToTrustedRoot` (backed by `windows.CertGetCertificateChain` / `CertFreeCertificateChain`). New error string `"[VM] Failed to load host CA certificates: %v"`.
 - **New Desktop-side features** (no pipe protocol impact):
   - **`ENABLE_PROMPT_CACHING_1H=1`** — new environment variable injected by Desktop into every spawned Claude Code process (alongside `CLAUDE_CODE_IS_COWORK=1`, `DISABLE_MICROCOMPACT=1`). Our backend passes env through transparently — no handler change required.
   - **`cowork-plugin-oauth` storage** — new `[PluginOAuthStorage]` local `conf` file for per-plugin OAuth credentials
@@ -21,7 +25,6 @@ All notable changes to claude-cowork-service will be documented in this file.
   - **`setup-cowork` skill** — new built-in skill command driven by feature flag `skillPrompt`
   - IPC UUID changed (`f189fbc9...` → `08aa66e6-e7d3-4eb8-95ac-7e3f613ce196`) — rebuild artifact, no protocol impact
 - **Prior upstream update to Claude Desktop v1.2773.0** (from v1.2581.0, commit `c17612d`): minor cowork-svc.exe rebuild (+512 bytes), SDK rolled back to 0.2.92, Desktop-side `[cowork-deletion]` event logging, `dispatchOnCliOpAlwaysAllowed`, `coworkWebSearchEnabled` gate removed.
-- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.3036.0
 
 ## 1.0.49 — 2026-04-14
 
