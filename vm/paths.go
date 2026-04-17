@@ -38,23 +38,3 @@ func hostAbsFromShared(relPath string) (string, error) {
 	}
 	return abs, nil
 }
-
-// resolveSubpath resolves a subpath that may be root-relative
-// ("home/user/.config/...") or home-relative (".config/..."), matching the
-// JS resolveSubpath behavior. app.asar emits root-relative subpaths via
-// path.relative('/', absolutePath), so treating them as "/"+subpath recovers
-// the original absolute. Falls back to home-relative for legacy subpaths.
-func resolveSubpath(subpath string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = "/"
-	}
-	if subpath == "" {
-		return home
-	}
-	asRoot := filepath.Clean("/" + subpath)
-	if asRoot == home || strings.HasPrefix(asRoot, home+string(filepath.Separator)) {
-		return asRoot
-	}
-	return filepath.Join(home, subpath)
-}

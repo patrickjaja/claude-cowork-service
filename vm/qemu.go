@@ -2,6 +2,7 @@ package vm
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -129,7 +130,9 @@ func startQEMU(spec qemuLaunchSpec, debug bool) (*qemuInstance, error) {
 		running:  true,
 		exitedCh: make(chan struct{}),
 	}
-	os.WriteFile(inst.pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0o644)
+	if err := os.WriteFile(inst.pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0o644); err != nil {
+		log.Printf("[kvm] writing QEMU PID file %s: %v", inst.pidFile, err)
+	}
 
 	log.Printf("[kvm] QEMU started (PID %d, CID %d)", cmd.Process.Pid, spec.cid)
 
@@ -138,7 +141,9 @@ func startQEMU(spec qemuLaunchSpec, debug bool) (*qemuInstance, error) {
 	if !inst.isAlive() {
 		inst.running = false
 		close(inst.exitedCh)
-		os.Remove(inst.pidFile)
+		if err := os.Remove(inst.pidFile); err != nil && !os.IsNotExist(err) {
+			log.Printf("[kvm] remove PID file %s: %v", inst.pidFile, err)
+		}
 		return nil, fmt.Errorf("QEMU exited immediately (check disk image or KVM access)")
 	}
 
@@ -147,7 +152,9 @@ func startQEMU(spec qemuLaunchSpec, debug bool) (*qemuInstance, error) {
 		inst.mu.Lock()
 		inst.running = false
 		inst.mu.Unlock()
-		os.Remove(inst.pidFile)
+		if rerr := os.Remove(inst.pidFile); rerr != nil && !os.IsNotExist(rerr) {
+			log.Printf("[kvm] remove PID file %s: %v", inst.pidFile, rerr)
+		}
 		close(inst.exitedCh)
 		if err != nil {
 			log.Printf("[kvm] QEMU exited with error: %v", err)
@@ -214,7 +221,9 @@ func (q *qemuInstance) Shutdown(qmp *QmpClient) {
 	}
 
 	// Last resort.
-	q.cmd.Process.Kill()
+	if err := q.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		log.Printf("[kvm] SIGKILL QEMU: %v", err)
+	}
 	select {
 	case <-q.exitedCh:
 	case <-time.After(2 * time.Second):
@@ -231,30 +240,34 @@ func killStalePID(stateDir string) {
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 	if err != nil {
-		os.Remove(pidFile)
+		_ = os.Remove(pidFile) // malformed pidfile — nothing to recover
 		return
 	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
-		os.Remove(pidFile)
+		_ = os.Remove(pidFile)
 		return
 	}
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		os.Remove(pidFile)
+		_ = os.Remove(pidFile) // process already gone
 		return
 	}
 	log.Printf("[kvm] killing stale QEMU (PID %d)", pid)
-	proc.Signal(syscall.SIGTERM)
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		log.Printf("[kvm] SIGTERM stale QEMU %d: %v", pid, err)
+	}
 	for i := 0; i < 50; i++ {
 		time.Sleep(100 * time.Millisecond)
 		if err := proc.Signal(syscall.Signal(0)); err != nil {
-			os.Remove(pidFile)
+			_ = os.Remove(pidFile)
 			return
 		}
 	}
-	proc.Signal(syscall.SIGKILL)
+	if err := proc.Signal(syscall.SIGKILL); err != nil {
+		log.Printf("[kvm] SIGKILL stale QEMU %d: %v", pid, err)
+	}
 	time.Sleep(200 * time.Millisecond)
-	os.Remove(pidFile)
+	_ = os.Remove(pidFile)
 }
 
 // vhdxConvertedCanary is appended to a VHDX after we successfully convert
@@ -269,7 +282,7 @@ func vhdxHasCanary(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	fi, err := f.Stat()
 	if err != nil || fi.Size() < int64(len(vhdxConvertedCanary)) {
 		return false
@@ -286,9 +299,11 @@ func appendVhdxCanary(path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.Write(vhdxConvertedCanary)
-	return err
+	if _, werr := f.Write(vhdxConvertedCanary); werr != nil {
+		_ = f.Close()
+		return werr
+	}
+	return f.Close()
 }
 
 // ensureVHDXConverted converts <basename>.vhdx → <basename>.qcow2 in
@@ -315,14 +330,19 @@ func ensureVHDXConverted(bundleDir, basename string) (string, error) {
 
 	if qcow2Err == nil {
 		log.Printf("[kvm] %s.vhdx canary missing — reconverting", basename)
-		os.Remove(qcow2Path)
+		if err := os.Remove(qcow2Path); err != nil && !os.IsNotExist(err) {
+			log.Printf("[kvm] removing stale qcow2 %s: %v", qcow2Path, err)
+		}
 	}
 
 	log.Printf("[kvm] converting %s.vhdx → qcow2 (this is slow on first run)", basename)
 	cmd := exec.Command("qemu-img", "convert",
 		"-f", "vhdx", "-O", "qcow2", vhdxPath, qcow2Path)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		os.Remove(qcow2Path)
+		// Clean up the partial qcow2. Ignore the Remove error — the conversion
+		// error we return is more actionable, and the file will be overwritten
+		// on retry.
+		_ = os.Remove(qcow2Path)
 		return "", fmt.Errorf("converting %s.vhdx: %s: %w",
 			basename, strings.TrimSpace(string(out)), err)
 	}

@@ -255,7 +255,9 @@ func (h *Handler) handleStopVM(conn net.Conn, req Request) {
 func (h *Handler) handleIsRunning(conn net.Conn, req Request) {
 	var p vmNameParams
 	if req.Params != nil {
-		json.Unmarshal(req.Params, &p)
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			logx.Debug("isRunning: ignoring malformed params: %v", err)
+		}
 	}
 	running, err := h.backend.IsRunning(p.Name)
 	if err != nil {
@@ -268,7 +270,9 @@ func (h *Handler) handleIsRunning(conn net.Conn, req Request) {
 func (h *Handler) handleIsGuestConnected(conn net.Conn, req Request) {
 	var p vmNameParams
 	if req.Params != nil {
-		json.Unmarshal(req.Params, &p)
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			logx.Debug("isGuestConnected: ignoring malformed params: %v", err)
+		}
 	}
 	connected, err := h.backend.IsGuestConnected(p.Name)
 	if err != nil {
@@ -415,7 +419,9 @@ func (h *Handler) handleIsDebugLoggingEnabled(conn net.Conn, req Request) {
 func (h *Handler) handleSubscribeEvents(conn net.Conn, req Request) {
 	var p vmNameParams
 	if req.Params != nil {
-		json.Unmarshal(req.Params, &p)
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			logx.Debug("subscribeEvents: ignoring malformed params: %v", err)
+		}
 	}
 
 	var (

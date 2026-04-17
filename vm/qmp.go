@@ -40,19 +40,25 @@ func DialQMP(socketPath string, timeout time.Duration) (*QmpClient, error) {
 		return nil, fmt.Errorf("dial QMP: %w", err)
 	}
 	q := &QmpClient{conn: conn, reader: bufio.NewReader(conn)}
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("setting QMP read deadline: %w", err)
+	}
 
 	// Wait for {"QMP":{...}} greeting.
 	if _, err := q.readLine(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("reading QMP greeting: %w", err)
 	}
 
 	if _, err := q.Send(map[string]string{"execute": "qmp_capabilities"}); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("qmp_capabilities: %w", err)
 	}
-	conn.SetReadDeadline(time.Time{}) // clear deadline for later sends
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("clearing QMP read deadline: %w", err)
+	}
 	return q, nil
 }
 
@@ -67,8 +73,10 @@ func (q *QmpClient) Send(cmd interface{}) (map[string]json.RawMessage, error) {
 	}
 	data = append(data, '\n')
 
-	q.conn.SetDeadline(time.Now().Add(10 * time.Second))
-	defer q.conn.SetDeadline(time.Time{})
+	if err := q.conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return nil, fmt.Errorf("set QMP send deadline: %w", err)
+	}
+	defer func() { _ = q.conn.SetDeadline(time.Time{}) }()
 
 	if _, err := q.conn.Write(data); err != nil {
 		return nil, err

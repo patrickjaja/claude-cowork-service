@@ -169,7 +169,9 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 			}
 			continue
 		}
-		os.MkdirAll(hostPath, 0755)
+		if err := os.MkdirAll(hostPath, 0755); err != nil && b.debug {
+			log.Printf("[native] MkdirAll %s: %v", hostPath, err)
+		}
 		linkPath := filepath.Join(mntDir, mountName)
 
 		// Prevent self-referencing symlinks (ELOOP bug).
@@ -188,18 +190,31 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 			}
 		}
 
-		os.Remove(linkPath)
-		os.Symlink(hostPath, linkPath)
+		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) && b.debug {
+			log.Printf("[native] remove stale link %s: %v", linkPath, err)
+		}
+		if err := os.Symlink(hostPath, linkPath); err != nil {
+			if b.debug {
+				log.Printf("[native] symlink %s → %s: %v", linkPath, hostPath, err)
+			}
+			continue
+		}
 		if b.debug {
 			log.Printf("[native] mount: %s → %s", linkPath, hostPath)
 		}
 	}
 
-	// Create /sessions/<name> symlink so absolute VM paths resolve
+	// Create /sessions/<name> symlink so absolute VM paths resolve.
+	// MkdirAll and Symlink both fail without root, which is the common case —
+	// the caller already copes by path-remapping cwd/env in that mode.
 	topSessionDir := "/sessions/" + name
-	os.MkdirAll("/sessions", 0755) // may fail without root — that's ok
+	if err := os.MkdirAll("/sessions", 0755); err != nil && b.debug {
+		log.Printf("[native] MkdirAll /sessions: %v (expected without root)", err)
+	}
 	if _, err := os.Lstat(topSessionDir); err != nil {
-		os.Symlink(realSessionDir, topSessionDir)
+		if err := os.Symlink(realSessionDir, topSessionDir); err != nil && b.debug {
+			log.Printf("[native] symlink %s → %s: %v (expected without root)", topSessionDir, realSessionDir, err)
+		}
 	}
 
 	// Session prefix used for path remapping (VM paths ↔ real paths)

@@ -61,7 +61,7 @@ func (b *BundleManager) ConvertVHDX(bundleDir string) error {
 	log.Printf("Converting VHDX to qcow2: %s", bundleDir)
 
 	cmd := exec.Command("qemu-img", "convert",
-		"-f", "vhdx",   // VHDX v2 format (not "vpc" which is VHD v1)
+		"-f", "vhdx", // VHDX v2 format (not "vpc" which is VHD v1)
 		"-O", "qcow2",
 		vhdxPath,
 		qcow2Path,
@@ -70,8 +70,10 @@ func (b *BundleManager) ConvertVHDX(bundleDir string) error {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		// Clean up partial conversion
-		os.Remove(qcow2Path)
+		// Clean up partial conversion. Ignore the Remove error — we're already
+		// returning a more useful error from Run, and the leftover file will be
+		// overwritten on the next attempt.
+		_ = os.Remove(qcow2Path)
 		return fmt.Errorf("qemu-img convert failed: %w", err)
 	}
 
@@ -80,8 +82,8 @@ func (b *BundleManager) ConvertVHDX(bundleDir string) error {
 	// Optionally remove the VHDX to save space
 	if b.debug {
 		log.Printf("Keeping VHDX file for debugging")
-	} else {
-		os.Remove(vhdxPath)
+	} else if err := os.Remove(vhdxPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("removing VHDX %s after conversion: %v", vhdxPath, err)
 	}
 
 	return nil

@@ -69,7 +69,9 @@ const keepaliveTimeout = 30 * time.Second
 func NewKvmBackend(bundlesDir string, debug bool) *KvmBackend {
 	home, _ := os.UserHomeDir()
 	baseDir := filepath.Join(home, ".local", "share", "claude-desktop", "vm")
-	os.MkdirAll(baseDir, 0o755)
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		log.Printf("[kvm] MkdirAll %s: %v", baseDir, err)
+	}
 	return &KvmBackend{
 		baseDir:    baseDir,
 		bundlesDir: bundlesDir,
@@ -319,7 +321,9 @@ func (b *KvmBackend) StopVM(name string) error {
 		qemu.Shutdown(qmp)
 	}
 	if qmp != nil {
-		qmp.Close()
+		if err := qmp.Close(); err != nil && b.debug {
+			log.Printf("[kvm] qmp close: %v", err)
+		}
 	}
 	if helper != nil {
 		helper.Stop()
@@ -530,7 +534,7 @@ func (b *KvmBackend) ReadFile(processName string, filePath string) ([]byte, erro
 	}
 
 	// Host fallback: translate virtiofs guest paths back to host absolutes.
-	resolved := filePath
+	var resolved string
 	if strings.HasPrefix(filePath, VFSGuestSharedPrefix+"/") {
 		rel := strings.TrimPrefix(filePath, VFSGuestSharedPrefix+"/")
 		abs, err := hostAbsFromShared(rel)
@@ -741,7 +745,9 @@ func (b *KvmBackend) SendGuestResponse(id string, resultJSON string, errMsg stri
 // Shutdown is called on process exit. It performs a best-effort StopVM.
 func (b *KvmBackend) Shutdown() {
 	log.Printf("[kvm] shutting down")
-	b.StopVM("")
+	if err := b.StopVM(""); err != nil && b.debug {
+		log.Printf("[kvm] StopVM on shutdown: %v", err)
+	}
 }
 
 // Touch records fresh RPC activity. Used by the keepalive watchdog to tell
@@ -770,7 +776,11 @@ func (b *KvmBackend) watchdogLoop(stop <-chan struct{}) {
 			}
 			log.Printf("[kvm] watchdog: no RPC activity for %s — Desktop presumed dead, stopping VM",
 				keepaliveTimeout)
-			go b.StopVM("")
+			go func() {
+				if err := b.StopVM(""); err != nil {
+					log.Printf("[kvm] watchdog StopVM: %v", err)
+				}
+			}()
 			return
 		}
 	}
@@ -797,8 +807,7 @@ func (b *KvmBackend) allocateCID() uint32 {
 	cid := uint32(3)
 	if data, err := os.ReadFile(cidFile); err == nil {
 		var n uint32
-		fmt.Sscanf(string(data), "%d", &n)
-		if n >= 3 {
+		if _, err := fmt.Sscanf(string(data), "%d", &n); err == nil && n >= 3 {
 			cid = n
 		}
 	}
@@ -806,7 +815,9 @@ func (b *KvmBackend) allocateCID() uint32 {
 	if next >= 65535 {
 		next = 3
 	}
-	os.WriteFile(cidFile, []byte(fmt.Sprintf("%d", next)), 0o644)
+	if err := os.WriteFile(cidFile, []byte(fmt.Sprintf("%d", next)), 0o644); err != nil {
+		log.Printf("[kvm] persisting CID counter to %s: %v", cidFile, err)
+	}
 	return cid
 }
 

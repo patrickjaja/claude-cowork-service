@@ -3,6 +3,7 @@ package vm
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -86,7 +87,10 @@ func (h *vfsHelper) emit(obj map[string]interface{}) {
 	if err != nil {
 		return
 	}
-	os.Stdout.Write(append(data, '\n'))
+	// Stdout is the helper's protocol channel back to the parent. If the
+	// parent has closed the pipe we're about to exit anyway — no useful
+	// recovery.
+	_, _ = os.Stdout.Write(append(data, '\n'))
 }
 
 func (h *vfsHelper) run() int {
@@ -151,7 +155,9 @@ func (h *vfsHelper) run() int {
 			time.Sleep(100 * time.Millisecond)
 		}
 		h.log("socket never appeared")
-		h.virtiofsd.Process.Signal(syscall.SIGTERM)
+		if err := h.virtiofsd.Process.Signal(syscall.SIGTERM); err != nil {
+			h.log("SIGTERM virtiofsd: %v", err)
+		}
 	}()
 
 	sigCh := make(chan os.Signal, 2)
@@ -341,10 +347,14 @@ func (h *vfsHelper) doStop() {
 	}
 
 	if h.virtiofsd != nil && h.virtiofsd.Process != nil {
-		h.virtiofsd.Process.Signal(syscall.SIGTERM)
+		if err := h.virtiofsd.Process.Signal(syscall.SIGTERM); err != nil {
+			h.log("SIGTERM virtiofsd: %v", err)
+		}
 		go func() {
 			time.Sleep(2 * time.Second)
-			h.virtiofsd.Process.Kill()
+			if err := h.virtiofsd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				h.log("SIGKILL virtiofsd: %v", err)
+			}
 		}()
 	}
 }

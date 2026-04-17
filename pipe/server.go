@@ -5,6 +5,8 @@ import (
 	"net"
 	"os"
 	"sync"
+
+	"github.com/patrickjaja/claude-cowork-service/logx"
 )
 
 // VMBackend defines the interface that the VM manager must implement.
@@ -89,7 +91,9 @@ func (s *Server) Start() error {
 
 	// Set socket permissions (readable/writable by owner only)
 	if err := os.Chmod(s.socketPath, 0700); err != nil {
-		listener.Close()
+		if cerr := listener.Close(); cerr != nil {
+			logx.Debug("closing listener after chmod failure: %v", cerr)
+		}
 		return err
 	}
 
@@ -103,10 +107,14 @@ func (s *Server) Start() error {
 func (s *Server) Stop() {
 	close(s.quit)
 	if s.listener != nil {
-		s.listener.Close()
+		if err := s.listener.Close(); err != nil {
+			logx.Debug("closing listener on Stop: %v", err)
+		}
 	}
 	s.wg.Wait()
-	os.Remove(s.socketPath)
+	if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
+		logx.Debug("removing socket %s on Stop: %v", s.socketPath, err)
+	}
 }
 
 func (s *Server) acceptLoop() {
@@ -131,7 +139,11 @@ func (s *Server) acceptLoop() {
 
 func (s *Server) handleConnection(conn net.Conn) {
 	defer s.wg.Done()
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			logx.Debug("closing client connection: %v", err)
+		}
+	}()
 
 	if s.debug {
 		log.Printf("Client connected: %s", conn.RemoteAddr())

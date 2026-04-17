@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+
+	"github.com/patrickjaja/claude-cowork-service/logx"
 )
 
 // Request represents an incoming RPC request from Claude Desktop.
@@ -18,8 +20,10 @@ type Request struct {
 
 // Response represents an outgoing RPC response to Claude Desktop.
 // The TypeScript VM client (vZe) expects:
-//   Success: {"success": true, "result": {...}, "id": <request-id>}
-//   Error:   {"success": false, "error": "message", "id": <request-id>}
+//
+//	Success: {"success": true, "result": {...}, "id": <request-id>}
+//	Error:   {"success": false, "error": "message", "id": <request-id>}
+//
 // The "id" field MUST echo back the request ID so the client can match
 // responses to requests. Without it, responses are treated as "orphaned".
 type Response struct {
@@ -65,9 +69,12 @@ func WriteMessage(conn net.Conn, data []byte) error {
 	return err
 }
 
-// WriteResponse serializes and sends a success Response.
+// WriteResponse serializes and sends a success Response. Any failure to
+// marshal or write is logged at debug level — callers have nothing useful
+// to do with the error (the connection is already dead) so we swallow it
+// here rather than asking every call site to wrap the call.
 // The id parameter must be the request ID so the client can match the response.
-func WriteResponse(conn net.Conn, id interface{}, result interface{}) error {
+func WriteResponse(conn net.Conn, id interface{}, result interface{}) {
 	resp := Response{
 		ID:      id,
 		Success: true,
@@ -75,13 +82,17 @@ func WriteResponse(conn net.Conn, id interface{}, result interface{}) error {
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		return fmt.Errorf("marshaling response: %w", err)
+		logx.Debug("marshaling response (id=%v): %v", id, err)
+		return
 	}
-	return WriteMessage(conn, data)
+	if err := WriteMessage(conn, data); err != nil {
+		logx.Debug("writing response (id=%v): %v", id, err)
+	}
 }
 
-// WriteError sends an error response.
-func WriteError(conn net.Conn, id interface{}, code int, message string) error {
+// WriteError sends an error response. Errors are logged at debug level for
+// the same reason as WriteResponse — the connection is already broken.
+func WriteError(conn net.Conn, id interface{}, code int, message string) {
 	resp := Response{
 		ID:      id,
 		Success: false,
@@ -89,7 +100,10 @@ func WriteError(conn net.Conn, id interface{}, code int, message string) error {
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		return fmt.Errorf("marshaling error response: %w", err)
+		logx.Debug("marshaling error response (id=%v): %v", id, err)
+		return
 	}
-	return WriteMessage(conn, data)
+	if err := WriteMessage(conn, data); err != nil {
+		logx.Debug("writing error response (id=%v): %v", id, err)
+	}
 }

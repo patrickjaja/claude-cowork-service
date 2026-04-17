@@ -443,9 +443,7 @@ func (pt *processTracker) tryHandlePresentFiles(lp *localProcess, line string) b
 		// dispatch users. The attachments parameter on SendUserMessage uploads files
 		// for delivery to the remote client.
 		var paths []string
-		for _, p := range presented {
-			paths = append(paths, p)
-		}
+		paths = append(paths, presented...)
 		contentItems = append(contentItems, map[string]interface{}{
 			"type": "text",
 			"text": fmt.Sprintf("NOTE: present_files cards may not be visible to the user (mobile/remote). To ensure delivery, also call SendUserMessage and include the file paths in the attachments parameter: %v", paths),
@@ -511,9 +509,9 @@ func (pt *processTracker) kill(processID string, signal string) error {
 	// Kill the entire process group
 	pgid, err := syscall.Getpgid(lp.cmd.Process.Pid)
 	if err == nil {
-		syscall.Kill(-pgid, sig)
+		_ = syscall.Kill(-pgid, sig)
 	} else {
-		lp.cmd.Process.Signal(sig)
+		_ = lp.cmd.Process.Signal(sig)
 	}
 
 	return nil
@@ -673,6 +671,6 @@ func (pt *processTracker) killAll() {
 	pt.mu.RUnlock()
 
 	for _, id := range ids {
-		pt.kill(id, "")
+		_ = pt.kill(id, "")
 	}
 }

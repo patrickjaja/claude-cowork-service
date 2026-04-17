@@ -3,6 +3,7 @@ package vm
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -161,7 +162,10 @@ func (v *VfsHelper) handleLine(line []byte) {
 	}
 	if ev, ok := msg["event"]; ok {
 		var eventName string
-		json.Unmarshal(ev, &eventName)
+		if err := json.Unmarshal(ev, &eventName); err != nil {
+			log.Printf("[kvm] VFS helper event unmarshal: %v", err)
+			return
+		}
 		switch eventName {
 		case "ready":
 			v.mu.Lock()
@@ -184,12 +188,16 @@ func (v *VfsHelper) handleLine(line []byte) {
 		}
 		v.mu.Unlock()
 		if found {
-			okField, _ := msg["ok"]
-			errField, _ := msg["error"]
+			okField := msg["ok"]
+			errField := msg["error"]
 			var okVal bool
-			json.Unmarshal(okField, &okVal)
+			if err := json.Unmarshal(okField, &okVal); err != nil && len(okField) > 0 {
+				log.Printf("[kvm] VFS helper resp: ok field unmarshal: %v", err)
+			}
 			var errStr string
-			json.Unmarshal(errField, &errStr)
+			if err := json.Unmarshal(errField, &errStr); err != nil && len(errField) > 0 {
+				log.Printf("[kvm] VFS helper resp: error field unmarshal: %v", err)
+			}
 			ch <- helperResp{OK: okVal, Error: errStr}
 			close(ch)
 			return
@@ -277,18 +285,24 @@ func (v *VfsHelper) Stop() {
 	// Best-effort graceful stop.
 	v.send(map[string]interface{}{"op": "stop"}) //nolint:errcheck
 	if v.stdin != nil {
-		v.stdin.Close()
+		if err := v.stdin.Close(); err != nil {
+			log.Printf("[kvm] close VFS helper stdin: %v", err)
+		}
 	}
 	select {
 	case <-v.exit:
 		return
 	case <-time.After(3 * time.Second):
 	}
-	v.cmd.Process.Signal(syscall.SIGTERM)
+	if err := v.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		log.Printf("[kvm] SIGTERM VFS helper: %v", err)
+	}
 	select {
 	case <-v.exit:
 		return
 	case <-time.After(2 * time.Second):
 	}
-	v.cmd.Process.Kill()
+	if err := v.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		log.Printf("[kvm] SIGKILL VFS helper: %v", err)
+	}
 }

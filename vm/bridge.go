@@ -101,11 +101,11 @@ func (g *GuestBridge) Listen(onConnect func()) error {
 	if _, _, errno := syscall.RawSyscall(
 		syscall.SYS_BIND, uintptr(fd), uintptr(addrPtr), unsafe.Sizeof(addr),
 	); errno != 0 {
-		syscall.Close(fd)
+		_ = syscall.Close(fd) // socket is being discarded; close failure can't be acted on
 		return fmt.Errorf("binding vsock port %d: %w", g.port, errno)
 	}
 	if err := syscall.Listen(fd, 1); err != nil {
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 		return fmt.Errorf("listening vsock: %w", err)
 	}
 	g.listenFD = fd
@@ -138,7 +138,9 @@ func (g *GuestBridge) acceptLoop() {
 
 		g.connMu.Lock()
 		if g.conn != nil {
-			g.conn.Close()
+			if err := g.conn.Close(); err != nil && g.debug {
+				log.Printf("[kvm] close prior guest conn: %v", err)
+			}
 		}
 		g.conn = conn
 		g.connMu.Unlock()
@@ -160,7 +162,9 @@ func (g *GuestBridge) acceptLoop() {
 			g.conn = nil
 		}
 		g.connMu.Unlock()
-		conn.Close()
+		if err := conn.Close(); err != nil && g.debug {
+			log.Printf("[kvm] close guest conn: %v", err)
+		}
 		log.Printf("[kvm] guest connection closed")
 		g.emit(map[string]string{"type": "networkStatus", "status": "disconnected"})
 
@@ -183,12 +187,16 @@ func (g *GuestBridge) Close() {
 	g.closed.Store(true)
 	g.connMu.Lock()
 	if g.conn != nil {
-		g.conn.Close()
+		if err := g.conn.Close(); err != nil && g.debug {
+			log.Printf("[kvm] Close guest conn: %v", err)
+		}
 		g.conn = nil
 	}
 	g.connMu.Unlock()
 	if g.listenFD >= 0 {
-		syscall.Close(g.listenFD)
+		if err := syscall.Close(g.listenFD); err != nil && g.debug {
+			log.Printf("[kvm] Close listen fd: %v", err)
+		}
 		g.listenFD = -1
 	}
 }
@@ -231,7 +239,12 @@ func (g *GuestBridge) handleMessage(raw []byte) {
 
 	if forwardedEvents[typ] {
 		var out interface{}
-		json.Unmarshal(raw, &out)
+		if err := json.Unmarshal(raw, &out); err != nil {
+			if g.debug {
+				log.Printf("[kvm] forward %s: re-unmarshal: %v", typ, err)
+			}
+			return
+		}
 		g.emit(out)
 		return
 	}
@@ -242,7 +255,9 @@ func (g *GuestBridge) handleMessage(raw []byte) {
 		if forwardedEvents[ev] {
 			var params map[string]interface{}
 			if p, ok := msg["params"]; ok {
-				json.Unmarshal(p, &params)
+				if err := json.Unmarshal(p, &params); err != nil && g.debug {
+					log.Printf("[kvm] nested event %s: params unmarshal: %v", ev, err)
+				}
 			}
 			if params == nil {
 				params = map[string]interface{}{}
