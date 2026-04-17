@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis — v1.3036.0
+# Cowork Service Binary Analysis — v1.3109.0
 
 ## Binary Overview
 
@@ -20,7 +20,7 @@ The extract script pulls all files from the same directory level as cowork-svc.e
 | default.clod | 97 KB | Default configuration/data |
 | *.json (locale files) | ~15-75 KB each | UI translations (de-DE, en-US, es-419, etc.) |
 | *.png / *.ico | ~2-4 KB each | Tray icons (light/dark, various DPI) |
-| .version | 8 bytes | Version string ("1.3036.0") |
+| .version | 8 bytes | Version string ("1.3109.0") |
 
 ## Windows Architecture
 
@@ -205,16 +205,16 @@ Three packages: `main`, `pipe`, `vm`
 
 ---
 
-## bin/ Directory Checksums (v1.3036.0)
+## bin/ Directory Checksums (v1.3109.0)
 
 | File | SHA256 |
 |------|--------|
-| cowork-svc.exe | 6958c160af22d087ecb2e3af5a261c37c22ec6fe57a516124fcf6ac7a3a67fd3 |
+| cowork-svc.exe | e6c4dc0e69a6c3cb2f7289827fa44bedfe5421e36ca083254f061f91e2fcf221 |
 | cowork-plugin-shim.sh | *(unchanged from v1.2773.0)* |
-| chrome-native-host.exe | eae1503dfd5a080aac21f11f008d35d7c00c4fbb9ee31ffa600ec7fdcdb83716 |
-| smol-bin.x64.vhdx | 231288e915bbf2cfb863bc172a5c27d9a799b4f76d09487801c86a91992a3011 |
+| chrome-native-host.exe | 7aa41cc914c158c14d5cf1621224bbb5ec416b675b327d193e758b08c3c51ac9 |
+| smol-bin.x64.vhdx | ff6b71305226538143f56f1235e0d1d51a9bb952cdb4b0baa5978c661347a946 |
 | default.clod | d601ae9bf53de2d6d4a202c3fef1bd9ef2898932483e9df6a6a3dd99eb240796 |
-| app.asar | a1a8f2d640908281526445f1aab1ba46e4cf61cb2e55a59ef3ec407d09b29015 |
+| app.asar | 4683c52fa455daca409bfb81558bcef9c280a38b65882de0c6f11d0b1c070e70 |
 
 ---
 
@@ -222,7 +222,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.3036.0 |
+| **Package** | @ant/desktop v1.3109.0 |
 | **Electron** | 41.2.0 |
 | **Node requirement** | >=22.0.0 |
 
@@ -257,6 +257,14 @@ Three packages: `main`, `pipe`, `vm`
 - **Artifact lifecycle** — New telemetry events: `cowork_artifacts_created`, `cowork_artifacts_updated`, `cowork_artifacts_imported`, `cowork_artifacts_exported`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
+
+### New in v1.3109.0
+
+- **cowork-svc.exe**: Clean rebuild, **byte-identical size** (12,648,272 bytes), same Go version (go1.24.13). Only build metadata changed (VCS revision `35cbf6530e05912137624cde0f075dc7f121fa60`, build timestamp `2026-04-16T20:32:01Z`). No new handler functions, no new error strings, no structural diff in the binary beyond linker-placement noise.
+- **app.asar**: Significantly grew (10.1 MB → 14.6 MB extracted `index.js`). Contents are overwhelmingly minifier symbol renames — all 22 of our RPC methods (`configure`, `createVM`, `startVM`, `stopVM`, `spawn`, `kill`, `writeStdin`, `subscribeEvents`, `mountPath`, `readFile`, `installSdk`, `isRunning`, `isGuestConnected`, `isProcessRunning`, `getDownloadStatus`, `setDebugLogging`, `addApprovedOauthToken`, `sendGuestResponse`, `createDiskImage`, `deleteSessionDirs`, `getSessionsDiskInfo`, `isDebugLoggingEnabled`) are still referenced; session-type dispatch (`session_type:"cowork"`, `CLAUDE_CODE_TAGS:\`lam_session_type:...\``, `CLAUDE_CODE_BRIEF`, `disallowedTools`, `present_files`) unchanged.
+- **VM bundle unchanged** — same SHA `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d`, all file checksums identical.
+- **SDK versions unchanged** — Electron 41.2.0, claude-agent-sdk 0.2.92, claude-agent-sdk-future 0.2.93-dev, @modelcontextprotocol/sdk 1.28.0.
+- **No new RPC methods** — Protocol remains at 22 methods and 8 event types. Wire format, spawn parameters, and event structures are identical to v1.3036.0. No Go code changes required.
 
 ### New in v1.3036.0
 
@@ -387,6 +395,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.3109.0 | 12,648,272 bytes | Clean rebuild, byte-identical size; only build metadata changed; no new RPC methods; no new handlers; no new error strings; VM bundle unchanged; SDK versions unchanged; app.asar grew significantly but only minifier renames, all of our RPC methods and session dispatch logic unchanged |
 | 1.3036.0 | 12,648,272 bytes | Rebuild +4 KB; new Windows cert store helpers (`enumerateCertStore`, `certChainsToTrustedRoot`); no new RPC methods; Desktop injects `ENABLE_PROMPT_CACHING_1H=1` env var; new `cowork-plugin-oauth` storage; new `cu_lock_released`/`cu_teach_session` telemetry; new `setup-cowork` skill; `cowork_lock_midsession_model` gate |
 | 1.2773.0 | 12,644,176 bytes | Rebuild +512 bytes; SDK rolled back (0.2.92); no new RPC methods; cowork-deletion event logging; dispatchOnCliOpAlwaysAllowed; coworkWebSearchEnabled gate removed |
 | 1.2581.0 | 12,643,664 bytes | Clean rebuild, same size; no new RPC methods; new `cowork-file` URL scheme for native file preview; `coworkNativeFilePreview` + `coworkKappa` feature flags; LibreOffice document conversion; permission routing split (cowork vs ccd); `getCodeStats` IPC method; plugin shim updated |
