@@ -9,6 +9,22 @@ import (
 
 // VMBackend defines the interface that the VM manager must implement.
 // This decouples the pipe server from the VM implementation.
+type MountSpec struct {
+	Path string `json:"path"`
+	Mode string `json:"mode"`
+}
+
+type SessionsDiskInfo struct {
+	TotalBytes int64         `json:"totalBytes"`
+	FreeBytes  int64         `json:"freeBytes"`
+	Sessions   []interface{} `json:"sessions"`
+}
+
+type DeleteSessionDirsResult struct {
+	Deleted []string          `json:"deleted"`
+	Errors  map[string]string `json:"errors"`
+}
+
 type VMBackend interface {
 	Configure(memoryMB int, cpuCount int) error
 	CreateVM(name string) error
@@ -16,18 +32,26 @@ type VMBackend interface {
 	StopVM(name string) error
 	IsRunning(name string) (bool, error)
 	IsGuestConnected(name string) (bool, error)
-	Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]string) (string, error)
+	Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]MountSpec, rawParams []byte) (string, error)
 	Kill(processID string, signal string) error
 	WriteStdin(processID string, data []byte) error
 	IsProcessRunning(processID string) (bool, error)
-	MountPath(name string, hostPath string, guestPath string) error
-	ReadFile(name string, path string) ([]byte, error)
-	InstallSdk(name string) error
+	MountPath(processID string, subpath string, mountName string, mode string) error
+	ReadFile(processName string, filePath string) ([]byte, error)
+	InstallSdk(sdkSubpath string, version string) error
 	AddApprovedOauthToken(name string, token string) error
 	SetDebugLogging(enabled bool)
 	SubscribeEvents(name string, callback func(event interface{})) (cancel func(), err error)
 	GetDownloadStatus() string
+	GetSessionsDiskInfo(lowWaterBytes int64) (SessionsDiskInfo, error)
+	DeleteSessionDirs(names []string) (DeleteSessionDirsResult, error)
+	CreateDiskImage(diskName string, sizeGiB int) error
 	SendGuestResponse(id string, resultJSON string, errMsg string) error
+
+	// Touch is called on every inbound RPC. Backends that need to detect
+	// a dead Desktop (to trigger their own cleanup) can use this as a
+	// keepalive signal; others may no-op.
+	Touch()
 }
 
 // Server manages the Unix domain socket and client connections.
