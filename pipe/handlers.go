@@ -2,12 +2,13 @@ package pipe
 
 import (
 	"encoding/json"
-	"log"
 	"net"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/patrickjaja/claude-cowork-service/logx"
 )
 
 // Handler dispatches RPC methods to the VM backend.
@@ -25,15 +26,15 @@ func NewHandler(backend VMBackend, debug bool) *Handler {
 func (h *Handler) Handle(conn net.Conn, payload []byte) {
 	var req Request
 	if err := json.Unmarshal(payload, &req); err != nil {
-		if h.debug {
-			log.Printf("Invalid JSON: %v", err)
-		}
+		logx.Debug("Invalid JSON: %v", err)
 		WriteError(conn, nil, -32700, "Parse error")
 		return
 	}
 
-	if h.debug && req.Method != "isGuestConnected" && req.Method != "isProcessRunning" {
-		log.Printf("RPC: %s (id=%v)", req.Method, req.ID)
+	h.backend.Touch()
+
+	if req.Method != "isGuestConnected" && req.Method != "isProcessRunning" {
+		logx.Debug("RPC: %s (id=%v) params: %s", req.Method, req.ID, logx.Trunc(string(req.Params)))
 	}
 
 	switch req.Method {
@@ -82,9 +83,7 @@ func (h *Handler) Handle(conn net.Conn, payload []byte) {
 	case "sendGuestResponse":
 		h.handleSendGuestResponse(conn, req)
 	default:
-		if h.debug {
-			log.Printf("RPC: unknown method %q — returning success (passthrough)", req.Method)
-		}
+		logx.Debug("RPC: unknown method %q — returning success (passthrough)", req.Method)
 		WriteResponse(conn, req.ID, nil)
 	}
 }
@@ -118,18 +117,18 @@ type killParams struct {
 }
 
 type spawnParams struct {
-	Name               string                       `json:"name"`
-	ID                 string                       `json:"id"`
-	Cmd                string                       `json:"command"`
-	Args               []string                     `json:"args"`
-	Env                map[string]string             `json:"env"`
-	Cwd                string                       `json:"cwd"`
-	AdditionalMounts   map[string]additionalMount    `json:"additionalMounts"`
-	IsResume           bool                         `json:"isResume"`
-	AllowedDomains     []string                     `json:"allowedDomains"`
-	OneShot            bool                         `json:"oneShot"`
-	MountSkeletonHome  bool                         `json:"mountSkeletonHome"`
-	MountConda         string                       `json:"mountConda"`
+	Name              string               `json:"name"`
+	ID                string               `json:"id"`
+	Cmd               string               `json:"command"`
+	Args              []string             `json:"args"`
+	Env               map[string]string    `json:"env"`
+	Cwd               string               `json:"cwd"`
+	AdditionalMounts  map[string]MountSpec `json:"additionalMounts"`
+	IsResume          bool                 `json:"isResume"`
+	AllowedDomains    []string             `json:"allowedDomains"`
+	OneShot           bool                 `json:"oneShot"`
+	MountSkeletonHome bool                 `json:"mountSkeletonHome"`
+	MountConda        string               `json:"mountConda"`
 }
 
 type getSessionsDiskInfoParams struct {
@@ -145,11 +144,6 @@ type createDiskImageParams struct {
 	SizeGiB  int    `json:"sizeGiB"`
 }
 
-type additionalMount struct {
-	Path string `json:"path"`
-	Mode string `json:"mode"`
-}
-
 type processIDParams struct {
 	ProcessID string `json:"id"`
 }
@@ -160,19 +154,25 @@ type writeStdinParams struct {
 }
 
 type mountPathParams struct {
-	Name      string `json:"name"`
-	HostPath  string `json:"hostPath"`
-	GuestPath string `json:"guestPath"`
+	ProcessID string `json:"processId"`
+	Subpath   string `json:"subpath"`
+	MountName string `json:"mountName"`
+	Mode      string `json:"mode"`
 }
 
 type readFileParams struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	ProcessName string `json:"processName"`
+	FilePath    string `json:"filePath"`
 }
 
 type oauthTokenParams struct {
 	Name  string `json:"name"`
 	Token string `json:"token"`
+}
+
+type installSdkParams struct {
+	SdkSubpath string `json:"sdkSubpath"`
+	Version    string `json:"version"`
 }
 
 type debugLoggingParams struct {
@@ -235,10 +235,15 @@ func (h *Handler) handleStartVM(conn net.Conn, req Request) {
 }
 
 func (h *Handler) handleStopVM(conn net.Conn, req Request) {
+	// Desktop sends stopVM with no params at all, so req.Params can be
+	// nil. json.Unmarshal(nil, ...) would otherwise reject it as
+	// "unexpected end of JSON input" and we'd never reach the backend.
 	var p vmNameParams
-	if err := json.Unmarshal(req.Params, &p); err != nil {
-		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
-		return
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
+			return
+		}
 	}
 	if err := h.backend.StopVM(p.Name); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
@@ -250,7 +255,9 @@ func (h *Handler) handleStopVM(conn net.Conn, req Request) {
 func (h *Handler) handleIsRunning(conn net.Conn, req Request) {
 	var p vmNameParams
 	if req.Params != nil {
-		json.Unmarshal(req.Params, &p)
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			logx.Debug("isRunning: ignoring malformed params: %v", err)
+		}
 	}
 	running, err := h.backend.IsRunning(p.Name)
 	if err != nil {
@@ -263,7 +270,9 @@ func (h *Handler) handleIsRunning(conn net.Conn, req Request) {
 func (h *Handler) handleIsGuestConnected(conn net.Conn, req Request) {
 	var p vmNameParams
 	if req.Params != nil {
-		json.Unmarshal(req.Params, &p)
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			logx.Debug("isGuestConnected: ignoring malformed params: %v", err)
+		}
 	}
 	connected, err := h.backend.IsGuestConnected(p.Name)
 	if err != nil {
@@ -274,23 +283,14 @@ func (h *Handler) handleIsGuestConnected(conn net.Conn, req Request) {
 }
 
 func (h *Handler) handleSpawn(conn net.Conn, req Request) {
-	if h.debug {
-		log.Printf("spawn raw params: %s", string(req.Params))
-	}
+	logx.Debug("spawn raw params: %s", logx.Trunc(string(req.Params)))
 	var p spawnParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if h.debug {
-		log.Printf("spawn parsed: name=%q cmd=%q args=%v cwd=%q env=%v", p.Name, p.Cmd, p.Args, p.Cwd, p.Env)
-	}
-	// Convert additionalMounts to map[string]string for the backend
-	mounts := make(map[string]string, len(p.AdditionalMounts))
-	for mountName, mount := range p.AdditionalMounts {
-		mounts[mountName] = mount.Path
-	}
-	processID, err := h.backend.Spawn(p.Name, p.ID, p.Cmd, p.Args, p.Env, p.Cwd, mounts)
+	logx.Debug("spawn parsed: name=%q cmd=%q args=%v cwd=%q env=%v", p.Name, p.Cmd, p.Args, p.Cwd, p.Env)
+	processID, err := h.backend.Spawn(p.Name, p.ID, p.Cmd, p.Args, p.Env, p.Cwd, p.AdditionalMounts, req.Params)
 	if err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
@@ -319,23 +319,12 @@ func (h *Handler) handleKill(conn net.Conn, req Request) {
 }
 
 func (h *Handler) handleWriteStdin(conn net.Conn, req Request) {
-	if h.debug {
-		log.Printf("writeStdin raw params: %s", string(req.Params))
-	}
 	var p writeStdinParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if h.debug {
-		log.Printf("writeStdin processId=%s data=%q", p.ProcessID, p.Data)
-		// Log full stdin data to trace skill invocations
-		if len(p.Data) > 5000 {
-			log.Printf("writeStdin FULL (truncated): %s...END", p.Data[:5000])
-		} else {
-			log.Printf("writeStdin FULL: %s", p.Data)
-		}
-	}
+	logx.Debug("writeStdin processId=%s data=%s", p.ProcessID, logx.Trunc(p.Data))
 	if err := h.backend.WriteStdin(p.ProcessID, []byte(p.Data)); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
@@ -363,7 +352,7 @@ func (h *Handler) handleMountPath(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if err := h.backend.MountPath(p.Name, p.HostPath, p.GuestPath); err != nil {
+	if err := h.backend.MountPath(p.ProcessID, p.Subpath, p.MountName, p.Mode); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
@@ -376,21 +365,22 @@ func (h *Handler) handleReadFile(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	data, err := h.backend.ReadFile(p.Name, p.Path)
+	data, err := h.backend.ReadFile(p.ProcessName, p.FilePath)
 	if err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, req.ID, map[string]interface{}{"data": string(data)})
+	// Desktop's Linux client reads `response.result.content`.
+	WriteResponse(conn, req.ID, map[string]interface{}{"content": string(data)})
 }
 
 func (h *Handler) handleInstallSdk(conn net.Conn, req Request) {
-	var p vmNameParams
+	var p installSdkParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if err := h.backend.InstallSdk(p.Name); err != nil {
+	if err := h.backend.InstallSdk(p.SdkSubpath, p.Version); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
@@ -418,6 +408,7 @@ func (h *Handler) handleSetDebugLogging(conn net.Conn, req Request) {
 	}
 	h.backend.SetDebugLogging(p.Enabled)
 	h.debug = p.Enabled
+	logx.SetDebug(p.Enabled)
 	WriteResponse(conn, req.ID, nil)
 }
 
@@ -428,11 +419,13 @@ func (h *Handler) handleIsDebugLoggingEnabled(conn net.Conn, req Request) {
 func (h *Handler) handleSubscribeEvents(conn net.Conn, req Request) {
 	var p vmNameParams
 	if req.Params != nil {
-		json.Unmarshal(req.Params, &p)
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			logx.Debug("subscribeEvents: ignoring malformed params: %v", err)
+		}
 	}
 
 	var (
-		cancelled int32     // atomic flag to stop callbacks after write failure
+		cancelled int32      // atomic flag to stop callbacks after write failure
 		writeMu   sync.Mutex // serialize concurrent event writes on this connection
 	)
 
@@ -442,26 +435,16 @@ func (h *Handler) handleSubscribeEvents(conn net.Conn, req Request) {
 		}
 		data, err := json.Marshal(event)
 		if err != nil {
-			if h.debug {
-				log.Printf("Failed to marshal event: %v", err)
-			}
+			logx.Debug("Failed to marshal event: %v", err)
 			return
 		}
-		if h.debug {
-			truncated := string(data)
-			if len(truncated) > 200 {
-				truncated = truncated[:200] + "..."
-			}
-			log.Printf("EVENT → client: %s", truncated)
-		}
+		logx.Debug("EVENT → client: %s", logx.Trunc(string(data)))
 		writeMu.Lock()
 		werr := WriteMessage(conn, data)
 		writeMu.Unlock()
 		if werr != nil {
 			atomic.StoreInt32(&cancelled, 1)
-			if h.debug {
-				log.Printf("Event write failed, cancelling subscription: %v", werr)
-			}
+			logx.Debug("Event write failed, cancelling subscription: %v", werr)
 		}
 	})
 	if err != nil {
@@ -488,37 +471,42 @@ func (h *Handler) handleGetDownloadStatus(conn net.Conn, req Request) {
 }
 
 func (h *Handler) handleGetSessionsDiskInfo(conn net.Conn, req Request) {
-	// No-op on native Linux — no virtual disks to manage.
-	if h.debug {
-		log.Printf("RPC: getSessionsDiskInfo (no-op, native mode)")
+	var p getSessionsDiskInfoParams
+	if err := json.Unmarshal(req.Params, &p); err != nil {
+		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
+		return
 	}
-	WriteResponse(conn, req.ID, map[string]interface{}{
-		"totalBytes": 0,
-		"freeBytes":  0,
-		"sessions":   []interface{}{},
-	})
+	info, err := h.backend.GetSessionsDiskInfo(p.LowWaterBytes)
+	if err != nil {
+		WriteError(conn, req.ID, -32000, err.Error())
+		return
+	}
+	WriteResponse(conn, req.ID, info)
 }
 
 func (h *Handler) handleDeleteSessionDirs(conn net.Conn, req Request) {
-	// No-op on native Linux — session dirs are managed directly.
-	if h.debug {
-		log.Printf("RPC: deleteSessionDirs (no-op, native mode)")
+	var p deleteSessionDirsParams
+	if err := json.Unmarshal(req.Params, &p); err != nil {
+		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
+		return
 	}
-	WriteResponse(conn, req.ID, map[string]interface{}{
-		"deleted": []string{},
-		"errors":  map[string]string{},
-	})
+	result, err := h.backend.DeleteSessionDirs(p.Names)
+	if err != nil {
+		WriteError(conn, req.ID, -32000, err.Error())
+		return
+	}
+	WriteResponse(conn, req.ID, result)
 }
 
 func (h *Handler) handleCreateDiskImage(conn net.Conn, req Request) {
-	// No-op on native Linux — no virtual disk images needed (e.g. conda VHDX).
 	var p createDiskImageParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if h.debug {
-		log.Printf("RPC: createDiskImage diskName=%q sizeGiB=%d (no-op, native mode)", p.DiskName, p.SizeGiB)
+	if err := h.backend.CreateDiskImage(p.DiskName, p.SizeGiB); err != nil {
+		WriteError(conn, req.ID, -32000, err.Error())
+		return
 	}
 	WriteResponse(conn, req.ID, nil)
 }

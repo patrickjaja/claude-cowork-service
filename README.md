@@ -410,16 +410,63 @@ grep 'present_files handled' /tmp/cowork-debug.log
 grep 'stripping --disallowedTools' /tmp/cowork-debug.log
 ```
 
-## VM Backend (Dormant)
+## KVM Backend (Experimental)
 
-The `vm/` directory contains a full QEMU/KVM backend implementation:
-- `vm/manager.go` — VM lifecycle (create, start, stop)
-- `vm/qemu.go` — QEMU instance with direct kernel boot, COW overlays
-- `vm/vsock.go` — AF_VSOCK communication with guest sdk-daemon
-- `vm/bundle.go` — VHDX→qcow2 conversion, zstd decompression
-- `vm/network.go` — QEMU user-mode and bridge networking
+Alongside the default native backend, the daemon includes a real QEMU/KVM backend that runs Cowork sessions inside a virtual machine — matching the sandboxed execution model used on macOS and Windows. The default remains native mode; existing users are unaffected.
 
-This code works but is not used by the native backend. It's retained for potential future sandboxed execution mode.
+### Enabling KVM mode
+
+```bash
+# Via CLI flag
+./cowork-svc-linux -backend=kvm
+
+# Via environment variable
+COWORK_VM_BACKEND=kvm ./cowork-svc-linux
+
+# With debug logging
+./cowork-svc-linux -backend=kvm -debug
+```
+
+### Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| `qemu-system-x86_64` | QEMU system emulator |
+| `virtiofsd` | Packaged separately from QEMU on most distros (e.g. `pacman -S virtiofsd`, `apt install virtiofsd`) |
+| `/dev/kvm` | Must be readable by your user |
+| `/dev/vhost-vsock` | Load the kernel module: `modprobe vhost_vsock` |
+| Unprivileged user namespaces | The virtiofs helper re-execs itself under `unshare --user --map-root-user --mount` to share `$HOME` with the guest — no host root required |
+
+### Socket path
+
+KVM mode listens on `$XDG_RUNTIME_DIR/cowork-kvm-service.sock`, separate from the native backend's `cowork-vm-service.sock`. This means both backends can coexist on the same machine. Claude Desktop must be patched to probe the KVM socket when using this mode.
+
+### Architecture
+
+The KVM backend is implemented in the `vm/` package:
+
+| File | Role |
+|------|------|
+| `vm/backend.go` | Session lifecycle, process tracking, host-to-guest RPC |
+| `vm/bridge.go` | Length-prefixed JSON over AF_VSOCK with the guest `sdk-daemon` |
+| `vm/qemu.go` | QEMU launch, root-disk boot, VHDX-to-qcow2 caching with trailer-canary cache invalidation |
+| `vm/qmp.go` | QMP control channel for live networking and shutdown |
+| `vm/vfs.go` + `vm/helper.go` | virtiofs `$HOME` share via unprivileged user namespace helper |
+| `vm/preflight.go` | Gates startup on `/dev/kvm`, `qemu-system-x86_64`, and vhost-vsock |
+
+### Key design decisions
+
+- **Direct root-disk boot.** The guest boots directly off the converted root disk instead of a COW overlay, so session state persists across reboots.
+- **No host root required.** The virtiofs helper uses `unshare --user --map-root-user --mount` to share `$HOME` with the guest without elevated privileges.
+- **Centralized logging.** The `logx/` package provides configurable line truncation (default 160 chars) with overflow hints. Use `-log-full-lines` or `COWORK_LOG_FULL=1` to disable truncation when debugging RPC payloads.
+
+### VM bundle
+
+The KVM backend expects a Claude-Desktop-compatible VM bundle under `~/.config/Claude/vm_bundles/`. Claude Desktop downloads this bundle automatically on first launch of the Cowork tab (same provisioning flow as macOS and Windows).
+
+Startup logs are prefixed `[kvm]`; look for `sdk-daemon connected via vsock` to confirm the guest came up.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full list of KVM-related changes.
 
 ## Testing
 
@@ -510,4 +557,3 @@ These are re-validated on every upstream Claude Desktop release. See [update-pro
 >
 > This project is not affiliated with, endorsed by, or sponsored by Anthropic.
 > "Claude" is a trademark of Anthropic PBC.
-
