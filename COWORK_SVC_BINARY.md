@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis — v1.3109.0
+# Cowork Service Binary Analysis — v1.3561.0
 
 ## Binary Overview
 
@@ -20,7 +20,7 @@ The extract script pulls all files from the same directory level as cowork-svc.e
 | default.clod | 97 KB | Default configuration/data |
 | *.json (locale files) | ~15-75 KB each | UI translations (de-DE, en-US, es-419, etc.) |
 | *.png / *.ico | ~2-4 KB each | Tray icons (light/dark, various DPI) |
-| .version | 8 bytes | Version string ("1.3109.0") |
+| .version | 8 bytes | Version string ("1.3561.0") |
 
 ## Windows Architecture
 
@@ -69,16 +69,16 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (v1.3036.0)
+## cowork-svc.exe Deep Analysis (v1.3561.0)
 
 | Property | Value |
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
 | **Module** | github.com/anthropics/cowork-win32-service |
-| **Build date** | 2026-04-16 |
-| **Size** | 12,648,272 bytes |
-| **SHA256** | 6958c160af22d087ecb2e3af5a261c37c22ec6fe57a516124fcf6ac7a3a67fd3 |
+| **Build date** | 2026-04-20 |
+| **Size** | 12,654,928 bytes |
+| **SHA256** | 84758c5a16891aeee1b59800608b260948f0f5c5efd8c8994fba407edc5684d8 |
 
 ### Go Module Structure (from binary strings)
 
@@ -193,6 +193,8 @@ Three packages: `main`, `pipe`, `vm`
 
 **v1.2.234:** No new handler functions. Binary is a rebuild with updated timestamps only (identical size).
 
+**v1.3561.0:** Minor rebuild (+6,656 bytes, 12,648,272 → 12,654,928 bytes). Same Go version (go1.24.13). No new handler functions. Build date 2026-04-20, VCS revision `fbc74be3fdc714a2c46ef1fb84f71d4e4c062930`. Certificate date rotation visible in string diff. No new RPC methods.
+
 **v1.569.0:** New handler `handleSendGuestResponse` for plugin permission bridge guest responses. Binary grew ~11KB.
 
 **v1.1062.0:** No new handlers. Internal cert handling refactored (`LoadTrustedCACertificates` → `enumerateRootStore`). New `vm/rpc_types.go` source file (type refactor, not new types). Binary shrank 8KB.
@@ -205,16 +207,16 @@ Three packages: `main`, `pipe`, `vm`
 
 ---
 
-## bin/ Directory Checksums (v1.3109.0)
+## bin/ Directory Checksums (v1.3561.0)
 
 | File | SHA256 |
 |------|--------|
-| cowork-svc.exe | e6c4dc0e69a6c3cb2f7289827fa44bedfe5421e36ca083254f061f91e2fcf221 |
-| cowork-plugin-shim.sh | *(unchanged from v1.2773.0)* |
-| chrome-native-host.exe | 7aa41cc914c158c14d5cf1621224bbb5ec416b675b327d193e758b08c3c51ac9 |
-| smol-bin.x64.vhdx | ff6b71305226538143f56f1235e0d1d51a9bb952cdb4b0baa5978c661347a946 |
+| cowork-svc.exe | 84758c5a16891aeee1b59800608b260948f0f5c5efd8c8994fba407edc5684d8 |
+| cowork-plugin-shim.sh | 2fbef5ee6c07c26a1f7cd9204e1b6d37537edd2b96c0ce025010b890cb5935e7 *(unchanged from v1.2773.0)* |
+| chrome-native-host.exe | d7852a8d49252f94c5e95e853ed0754033f4b5bc64f030593c1abaaa19644b97 |
+| smol-bin.x64.vhdx | 7ca9598f6daa1d8a53095b95d3c57e1f3db3df47dbd755df4e8efb786deac6cf |
 | default.clod | d601ae9bf53de2d6d4a202c3fef1bd9ef2898932483e9df6a6a3dd99eb240796 |
-| app.asar | 4683c52fa455daca409bfb81558bcef9c280a38b65882de0c6f11d0b1c070e70 |
+| app.asar | 7f5eb546e0275eeb92ec34cbb27b57146072976b4873a645342157d8946195de |
 
 ---
 
@@ -222,7 +224,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.3109.0 |
+| **Package** | @ant/desktop v1.3561.0 |
 | **Electron** | 41.2.0 |
 | **Node requirement** | >=22.0.0 |
 
@@ -258,10 +260,29 @@ Three packages: `main`, `pipe`, `vm`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
 
+### New in v1.3561.0
+
+- **cowork-svc.exe**: Minor rebuild (+6,656 bytes, 12,648,272 → 12,654,928 bytes). Same Go version (go1.24.13). VCS revision `fbc74be3fdc714a2c46ef1fb84f71d4e4c062930`, build timestamp `2026-04-20T14:59:51Z`. No new RPC handler functions. Certificate date rotation in embedded TLS certs.
+- **app.asar**: Updated. Diff is overwhelmingly minifier symbol renames — all 22 RPC methods still referenced; session-type dispatch unchanged.
+- **VM bundle unchanged** — same SHA `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d`, all file checksums identical.
+- **claude-agent-sdk** updated: 0.2.92 → 0.2.111. MCP protocol version 2.1.111.
+- **Electron 41.2.0** — unchanged.
+- **New Desktop-side features** (no pipe protocol impact):
+  - **`EnabledCliOpsStore`** — new persistent store (`cowork-enabled-cli-ops`, `configFileMode:384`) for tracking enabled CLI operations
+  - **`coworkTrustedDeviceToken`** — trusted device token storage with encryption (gate `2023768496`), 10-second timeout
+  - **`is_child` session listing field** — `listAllSessions()` now returns `isChild` and `dispatchParentOrigin` fields for remote dispatch session tracking
+  - **SSH remote spawn** — feature flag `1496676413` now gates plugin/MCP passthrough for SSH-spawned sessions (`createSpawnFunction` gains second parameter)
+  - **`coworkWebFetchViaApi`** toggle — web fetch routing now dynamically switchable via feature flag
+  - **`cu_lock_released` / `cu_teach_session`** telemetry — computer-use lock and teach-mode tracking (continued from v1.3109.0)
+  - **`lam_tool_permission_responded`** — new telemetry event for permission responses in cowork sessions
+  - **Title generation** — new standalone title-gen spawn path for session titles
+- **IPC UUID change** — `8e6f15c2-1794-4f6a-a9e4-7586203a8d91` → `df0aa1df-1260-46ce-9bc9-e094b676df19` (no protocol impact)
+- **No new RPC methods** — Protocol remains at 22 methods and 8 event types. Wire format, spawn parameters, and event structures are identical to v1.3109.0. No Go code changes required.
+
 ### New in v1.3109.0
 
 - **cowork-svc.exe**: Clean rebuild, **byte-identical size** (12,648,272 bytes), same Go version (go1.24.13). Only build metadata changed (VCS revision `35cbf6530e05912137624cde0f075dc7f121fa60`, build timestamp `2026-04-16T20:32:01Z`). No new handler functions, no new error strings, no structural diff in the binary beyond linker-placement noise.
-- **app.asar**: Significantly grew (10.1 MB → 14.6 MB extracted `index.js`). Contents are overwhelmingly minifier symbol renames — all 22 of our RPC methods (`configure`, `createVM`, `startVM`, `stopVM`, `spawn`, `kill`, `writeStdin`, `subscribeEvents`, `mountPath`, `readFile`, `installSdk`, `isRunning`, `isGuestConnected`, `isProcessRunning`, `getDownloadStatus`, `setDebugLogging`, `addApprovedOauthToken`, `sendGuestResponse`, `createDiskImage`, `deleteSessionDirs`, `getSessionsDiskInfo`, `isDebugLoggingEnabled`) are still referenced; session-type dispatch (`session_type:"cowork"`, `CLAUDE_CODE_TAGS:\`lam_session_type:...\``, `CLAUDE_CODE_BRIEF`, `disallowedTools`, `present_files`) unchanged.
+- **app.asar**: Significantly grew (10.1 MB → 14.6 MB extracted `index.js`). Contents are overwhelmingly minifier symbol renames — all 22 of our RPC methods still referenced; session-type dispatch unchanged.
 - **VM bundle unchanged** — same SHA `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d`, all file checksums identical.
 - **SDK versions unchanged** — Electron 41.2.0, claude-agent-sdk 0.2.92, claude-agent-sdk-future 0.2.93-dev, @modelcontextprotocol/sdk 1.28.0.
 - **No new RPC methods** — Protocol remains at 22 methods and 8 event types. Wire format, spawn parameters, and event structures are identical to v1.3036.0. No Go code changes required.

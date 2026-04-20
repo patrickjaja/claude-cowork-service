@@ -5,13 +5,16 @@ All notable changes to claude-cowork-service will be documented in this file.
 ## Unreleased
 
 ### Changed
-- **Upstream update to Claude Desktop v1.3109.0** (from v1.3036.0)
-- **cowork-svc.exe**: Clean rebuild, **byte-identical size** (12,648,272 bytes), same Go version (go1.24.13). Only build metadata changed (VCS revision `35cbf6530e05912137624cde0f075dc7f121fa60`, build timestamp `2026-04-16T20:32:01Z`). No new handler functions, no new error strings.
+- **Upstream update to Claude Desktop v1.3561.0** (from v1.3109.0)
+- **cowork-svc.exe**: Minor rebuild (+6,656 bytes, 12,648,272 → 12,654,928 bytes), same Go version (go1.24.13). Build date 2026-04-20, VCS revision `fbc74be3fdc714a2c46ef1fb84f71d4e4c062930`. No new RPC handler functions; certificate date rotation in embedded TLS certs.
 - **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums
-- **app.asar**: Grew significantly (10.1 → 14.6 MB extracted JS) but contents are overwhelmingly minifier symbol renames. All 22 of our RPC methods are still referenced, and session dispatch logic (`CLAUDE_CODE_TAGS`, `CLAUDE_CODE_BRIEF`, `disallowedTools`, `present_files`, `session_type:"cowork"`) is unchanged.
-- **SDK versions unchanged** — Electron 41.2.0, claude-agent-sdk 0.2.92, claude-agent-sdk-future 0.2.93-dev, @modelcontextprotocol/sdk 1.28.0
+- **app.asar**: Updated, all changes are minifier symbol renames. All 22 RPC methods still referenced; session dispatch logic unchanged.
+- **claude-agent-sdk**: 0.2.92 → 0.2.111; MCP protocol version 2.1.111. Electron 41.2.0 unchanged.
+- **New Desktop-side features** (no pipe protocol impact): `EnabledCliOpsStore` (persistent CLI ops tracking), `coworkTrustedDeviceToken` (encrypted device tokens, gate `2023768496`), `is_child` session listing field (`dispatchParentOrigin`), SSH remote spawn feature flag `1496676413` for plugin/MCP passthrough, `lam_tool_permission_responded` telemetry, standalone title-gen spawn path
+- **IPC UUID change**: `8e6f15c2...` → `df0aa1df-1260-46ce-9bc9-e094b676df19` (no protocol impact)
 - **No Go code changes needed** — all 22 RPC methods, 8 event types, spawn parameters, and wire format are identical
-- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.3109.0
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.3561.0
+- **Prior upstream update to Claude Desktop v1.3109.0** (from v1.3036.0, commit `cfc2153`): clean rebuild, byte-identical binary size, no protocol changes
 - **Prior upstream update to Claude Desktop v1.3036.0** (from v1.2773.0, commit `95c768f`)
 - **cowork-svc.exe** (v1.3036.0): Minor rebuild (+4,096 bytes, 12,644,176 → 12,648,272 bytes), same Go version (go1.24.13). No new RPC handler functions. New Windows-only certificate store helpers: `vm.enumerateCertStore`, `vm.certChainsToTrustedRoot` (backed by `windows.CertGetCertificateChain` / `CertFreeCertificateChain`). New error string `"[VM] Failed to load host CA certificates: %v"`.
 - **New Desktop-side features** (no pipe protocol impact):
