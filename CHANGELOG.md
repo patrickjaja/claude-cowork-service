@@ -5,6 +5,7 @@ All notable changes to claude-cowork-service will be documented in this file.
 ## Unreleased
 
 ### Added
+- **`packaging/arch/build-pkg.sh`** — local pacman package builder. Mirrors the existing `build-deb.sh` / `build-rpm.sh` interface (`[--install] <binary> <version> [arch]`), generates a temporary PKGBUILD that wraps the prebuilt binary + systemd unit + install hook, runs `makepkg`, and drops a `claude-cowork-service-<ver>-1-<arch>.pkg.tar.zst` in the current directory. Pass `--install` to also `sudo pacman -U` the result.
 - **KVM backend** (`-backend=kvm`) — new QEMU/KVM-based guest runtime that replaces the old dormant VM implementation. Selectable via the `-backend` flag or the `COWORK_VM_BACKEND` environment variable. Listens on a dedicated socket (`cowork-kvm-service.sock`) so native and KVM daemons can coexist in the same `$XDG_RUNTIME_DIR`. Native remains the default.
   - `vm/backend.go` — session lifecycle, bundle preparation, memory/CPU configuration, process management
   - `vm/bridge.go` — vsock host↔guest JSON message bridge
