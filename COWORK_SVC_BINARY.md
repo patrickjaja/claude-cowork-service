@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis — v1.3561.0
+# Cowork Service Binary Analysis — v1.3883.0
 
 ## Binary Overview
 
@@ -13,14 +13,13 @@ The extract script pulls all files from the same directory level as cowork-svc.e
 | File | Size | Purpose |
 |------|------|---------|
 | cowork-svc.exe | 12 MB | Windows Hyper-V backend (Go binary) |
-| app.asar | 23 MB | Claude Desktop Electron app (same as main app) |
+| app.asar | 28 MB | Claude Desktop Electron app (same as main app) |
 | chrome-native-host.exe | 1 MB | Chrome native messaging host for browser tools |
 | cowork-plugin-shim.sh | 7.5 KB | Plugin permission gating library (new in v1.1.9669, updated in v1.2581.0) |
 | smol-bin.x64.vhdx | 36 MB | Empty ext4 filesystem for sdk-daemon updater |
-| default.clod | 97 KB | Default configuration/data |
 | *.json (locale files) | ~15-75 KB each | UI translations (de-DE, en-US, es-419, etc.) |
 | *.png / *.ico | ~2-4 KB each | Tray icons (light/dark, various DPI) |
-| .version | 8 bytes | Version string ("1.3561.0") |
+| .version | 8 bytes | Version string ("1.3883.0") |
 
 ## Windows Architecture
 
@@ -69,16 +68,16 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (v1.3561.0)
+## cowork-svc.exe Deep Analysis (v1.3883.0)
 
 | Property | Value |
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
 | **Module** | github.com/anthropics/cowork-win32-service |
-| **Build date** | 2026-04-20 |
-| **Size** | 12,654,928 bytes |
-| **SHA256** | 84758c5a16891aeee1b59800608b260948f0f5c5efd8c8994fba407edc5684d8 |
+| **Build date** | 2026-04-21 |
+| **Size** | 12,655,440 bytes |
+| **SHA256** | c2c4ae476ce5eb7b5ef72762a8cc28b496791d7b23d8275da3bd5653ca010359 |
 
 ### Go Module Structure (from binary strings)
 
@@ -195,6 +194,8 @@ Three packages: `main`, `pipe`, `vm`
 
 **v1.3561.0:** Minor rebuild (+6,656 bytes, 12,648,272 → 12,654,928 bytes). Same Go version (go1.24.13). No new handler functions. Build date 2026-04-20, VCS revision `fbc74be3fdc714a2c46ef1fb84f71d4e4c062930`. Certificate date rotation visible in string diff. No new RPC methods.
 
+**v1.3883.0:** Minor rebuild (+512 bytes, 12,654,928 → 12,655,440 bytes). Same Go version (go1.24.13). VCS revision `93ff6cb984386882b4bd9b6bca80d4cf5af8e13b`, build timestamp `2026-04-21T17:24:01Z`. New error wrapping `configure: %w` (replaces old `Config %` format string). No new RPC handler functions. `default.clod` removed from installer.
+
 **v1.569.0:** New handler `handleSendGuestResponse` for plugin permission bridge guest responses. Binary grew ~11KB.
 
 **v1.1062.0:** No new handlers. Internal cert handling refactored (`LoadTrustedCACertificates` → `enumerateRootStore`). New `vm/rpc_types.go` source file (type refactor, not new types). Binary shrank 8KB.
@@ -207,16 +208,15 @@ Three packages: `main`, `pipe`, `vm`
 
 ---
 
-## bin/ Directory Checksums (v1.3561.0)
+## bin/ Directory Checksums (v1.3883.0)
 
 | File | SHA256 |
 |------|--------|
-| cowork-svc.exe | 84758c5a16891aeee1b59800608b260948f0f5c5efd8c8994fba407edc5684d8 |
+| cowork-svc.exe | c2c4ae476ce5eb7b5ef72762a8cc28b496791d7b23d8275da3bd5653ca010359 |
 | cowork-plugin-shim.sh | 2fbef5ee6c07c26a1f7cd9204e1b6d37537edd2b96c0ce025010b890cb5935e7 *(unchanged from v1.2773.0)* |
-| chrome-native-host.exe | d7852a8d49252f94c5e95e853ed0754033f4b5bc64f030593c1abaaa19644b97 |
-| smol-bin.x64.vhdx | 7ca9598f6daa1d8a53095b95d3c57e1f3db3df47dbd755df4e8efb786deac6cf |
-| default.clod | d601ae9bf53de2d6d4a202c3fef1bd9ef2898932483e9df6a6a3dd99eb240796 |
-| app.asar | 7f5eb546e0275eeb92ec34cbb27b57146072976b4873a645342157d8946195de |
+| chrome-native-host.exe | 4c461ddd6e27f8feba5088c51e71f2be714f00ad61aaad8c853aba2e1b7f6ba3 |
+| smol-bin.x64.vhdx | 7afdc73e264fc992daa43560252907853cf1923986f11381e67dad27dd7af4bf |
+| app.asar | 06b87a63877d6546173924651f69c88b407eadbe1ff6dd6d0c1fb004c79da567 |
 
 ---
 
@@ -224,7 +224,7 @@ Three packages: `main`, `pipe`, `vm`
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.3561.0 |
+| **Package** | @ant/desktop v1.3883.0 |
 | **Electron** | 41.2.0 |
 | **Node requirement** | >=22.0.0 |
 
@@ -259,6 +259,29 @@ Three packages: `main`, `pipe`, `vm`
 - **Artifact lifecycle** — New telemetry events: `cowork_artifacts_created`, `cowork_artifacts_updated`, `cowork_artifacts_imported`, `cowork_artifacts_exported`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
+
+### New in v1.3883.0
+
+- **cowork-svc.exe**: Minor rebuild (+512 bytes, 12,654,928 → 12,655,440 bytes). Same Go version (go1.24.13). VCS revision `93ff6cb984386882b4bd9b6bca80d4cf5af8e13b`, build timestamp `2026-04-21T17:24:01Z`. New `configure: %w` error wrapping (replaces `Config %`). No new RPC handler functions.
+- **app.asar**: Grew significantly (~23 MB → ~28 MB, +19.5%). All changes are client-side Electron app modifications; pipe protocol unchanged.
+- **VM bundle unchanged** — same SHA `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d`, all file checksums identical.
+- **claude-agent-sdk** unchanged: 0.2.111. MCP protocol version 2.1.111. Electron version unchanged.
+- **`default.clod` removed** from installer — no longer shipped.
+- **New Desktop-side features** (no pipe protocol impact):
+  - **`coworkArtifacts`** — new feature flag/capability added to feature gates
+  - **`coworkSpaceContextEnabled`** — new user preference/setting (default: false)
+  - **`DebugHandoff` URL handler** — new `debug-handoff` deep link handler (logs warning "only available in nest builds")
+  - **`list_connectors` MCP tool** — new internal `mcp__mcp-registry__list_connectors` tool for rendering installed connectors
+  - **`suggest_plugin_install` multi-plugin** — schema changed from single-plugin to array of plugins with skills
+  - **`present_files` atomic writes** — now uses force-remove then exclusive create (`rm + wx flag`) instead of simple write
+  - **OAuth localhost HTTP** — URL validation relaxed to allow `http` on `127.0.0.1` for MCP server configs
+  - **Title generation `--model` flag** — Desktop now passes explicit model selection to title generation spawns
+  - **`dispatch_child` structured content** — gains `space`, `directory`, `active_children` fields
+  - **`RemoteProcess.rebind()` enhanced** — gains `canReattach` option
+  - **`PluginOAuthStorage.clientConfig`** — new storage key for OAuth client configuration
+- **IPC UUID change** — `df0aa1df-1260-46ce-9bc9-e094b676df19` → `4ab9ae55-583a-4867-90be-23b2daff8899` (no protocol impact)
+- **4 new feature gate IDs** — `2049450122`, `2192324205`, `2223451630`, `3023518717` (client-side Statsig gates)
+- **No new RPC methods** — Protocol remains at 22 methods and 8 event types. Wire format, spawn parameters, and event structures identical to v1.3561.0. No Go code changes required for protocol compatibility.
 
 ### New in v1.3561.0
 
@@ -416,6 +439,8 @@ Three packages: `main`, `pipe`, `vm`
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.3883.0 | 12,655,440 bytes | Minor rebuild (+512 bytes); `configure: %w` error wrapping; `default.clod` removed; no new RPC methods; app.asar +19.5%; VM bundle unchanged; new client-side features: coworkArtifacts, coworkSpaceContextEnabled, DebugHandoff, list_connectors MCP tool, multi-plugin suggest_plugin_install, present_files atomic writes |
+| 1.3561.0 | 12,654,928 bytes | Rebuild +6.6 KB; cert date rotation; no new RPC methods; SDK 0.2.111; new Desktop features: EnabledCliOpsStore, coworkTrustedDeviceToken, is_child session listing, SSH remote spawn, title-gen spawn |
 | 1.3109.0 | 12,648,272 bytes | Clean rebuild, byte-identical size; only build metadata changed; no new RPC methods; no new handlers; no new error strings; VM bundle unchanged; SDK versions unchanged; app.asar grew significantly but only minifier renames, all of our RPC methods and session dispatch logic unchanged |
 | 1.3036.0 | 12,648,272 bytes | Rebuild +4 KB; new Windows cert store helpers (`enumerateCertStore`, `certChainsToTrustedRoot`); no new RPC methods; Desktop injects `ENABLE_PROMPT_CACHING_1H=1` env var; new `cowork-plugin-oauth` storage; new `cu_lock_released`/`cu_teach_session` telemetry; new `setup-cowork` skill; `cowork_lock_midsession_model` gate |
 | 1.2773.0 | 12,644,176 bytes | Rebuild +512 bytes; SDK rolled back (0.2.92); no new RPC methods; cowork-deletion event logging; dispatchOnCliOpAlwaysAllowed; coworkWebSearchEnabled gate removed |

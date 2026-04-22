@@ -1,4 +1,4 @@
-# Cowork VM Bundle Reference — v1.3561.0
+# Cowork VM Bundle Reference — v1.3883.0
 
 > Re-validate on every upstream Claude Desktop version update.
 
@@ -216,6 +216,8 @@ Key installed packages: build-essential, curl, ffmpeg, gcc-11, ghostscript, git,
 
 | Claude Desktop Version | VM Bundle SHA | Notable Changes |
 |----------------------|--------------|-----------------|
+| 1.3883.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
+| 1.3561.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
 | 1.3109.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
 | 1.3036.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
 | 1.2773.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
