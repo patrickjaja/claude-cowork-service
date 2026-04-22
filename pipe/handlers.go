@@ -160,14 +160,15 @@ type writeStdinParams struct {
 }
 
 type mountPathParams struct {
-	Name      string `json:"name"`
-	HostPath  string `json:"hostPath"`
-	GuestPath string `json:"guestPath"`
+	ProcessID string `json:"processId"`
+	Subpath   string `json:"subpath"`
+	MountName string `json:"mountName"`
+	Mode      string `json:"mode"`
 }
 
 type readFileParams struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	ProcessName string `json:"processName"`
+	FilePath    string `json:"filePath"`
 }
 
 type oauthTokenParams struct {
@@ -363,7 +364,7 @@ func (h *Handler) handleMountPath(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if err := h.backend.MountPath(p.Name, p.HostPath, p.GuestPath); err != nil {
+	if err := h.backend.MountPath(p.ProcessID, p.Subpath, p.MountName, p.Mode); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
@@ -376,12 +377,12 @@ func (h *Handler) handleReadFile(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	data, err := h.backend.ReadFile(p.Name, p.Path)
+	data, err := h.backend.ReadFile(p.ProcessName, p.FilePath)
 	if err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, req.ID, map[string]interface{}{"data": string(data)})
+	WriteResponse(conn, req.ID, map[string]interface{}{"content": string(data)})
 }
 
 func (h *Handler) handleInstallSdk(conn net.Conn, req Request) {

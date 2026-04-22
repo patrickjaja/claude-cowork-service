@@ -409,19 +409,19 @@ func (b *Backend) IsProcessRunning(processID string) (bool, error) {
 	return b.tracker.isRunning(processID)
 }
 
-func (b *Backend) MountPath(name string, hostPath string, guestPath string) error {
+func (b *Backend) MountPath(processID string, subpath string, mountName string, mode string) error {
 	// Paths are already native — no mounting needed
 	if b.debug {
-		log.Printf("[native] mountPath %s → %s (no-op, paths are native)", hostPath, guestPath)
+		log.Printf("[native] mountPath processId=%s subpath=%s mountName=%s mode=%s (no-op, paths are native)", processID, subpath, mountName, mode)
 	}
 	return nil
 }
 
-func (b *Backend) ReadFile(name string, path string) ([]byte, error) {
+func (b *Backend) ReadFile(processName string, filePath string) ([]byte, error) {
 	if b.debug {
-		log.Printf("[native] readFile %s", path)
+		log.Printf("[native] readFile %s", filePath)
 	}
-	return os.ReadFile(path)
+	return os.ReadFile(filePath)
 }
 
 func (b *Backend) InstallSdk(name string) error {

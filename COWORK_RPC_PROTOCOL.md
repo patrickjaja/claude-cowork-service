@@ -1,4 +1,4 @@
-# Cowork RPC Protocol Reference — v1.3561.0
+# Cowork RPC Protocol Reference — v1.3883.0
 
 > **This document is the single source of truth for the protocol between Claude Desktop and cowork-svc.**
 > Re-validate on every upstream Claude Desktop version update.
@@ -357,20 +357,23 @@ Checks if a specific spawned process is still running.
 
 ### 11. `mountPath`
 
-Mounts a host path into the VM guest filesystem.
+Mounts a path for a running process in the VM guest filesystem.
 
 **Params:**
 ```json
 {
-  "name": string,
-  "hostPath": string,
-  "guestPath": string
+  "processId": string,
+  "subpath": string,
+  "mountName": string,
+  "mode": string
 }
 ```
 
 **Response:** `null`
 
 **Native Linux behavior:** No-op. Paths are already native -- no mounting needed. Logged in debug mode.
+
+**Note (v1.3883.0 fix):** Desktop has always sent `{processId, subpath, mountName, mode}` — the previous documentation was incorrect.
 
 ---
 
@@ -381,19 +384,21 @@ Reads a file from the VM filesystem (or directly from the host on native Linux).
 **Params:**
 ```json
 {
-  "name": string,
-  "path": string
+  "processName": string,
+  "filePath": string
 }
 ```
 
 **Response:**
 ```json
 {
-  "data": "file-contents-as-string"
+  "content": "file-contents-as-string"
 }
 ```
 
 **Native Linux behavior:** Direct `os.ReadFile()` on the given path.
+
+**Note (v1.3883.0 fix):** Desktop has always sent `{processName, filePath}` and expected `{content}` in the response — the previous documentation and handler code were incorrect.
 
 ---
 

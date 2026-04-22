@@ -20,8 +20,8 @@ type VMBackend interface {
 	Kill(processID string, signal string) error
 	WriteStdin(processID string, data []byte) error
 	IsProcessRunning(processID string) (bool, error)
-	MountPath(name string, hostPath string, guestPath string) error
-	ReadFile(name string, path string) ([]byte, error)
+	MountPath(processID string, subpath string, mountName string, mode string) error
+	ReadFile(processName string, filePath string) ([]byte, error)
 	InstallSdk(name string) error
 	AddApprovedOauthToken(name string, token string) error
 	SetDebugLogging(enabled bool)

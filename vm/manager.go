@@ -238,13 +238,13 @@ func (m *Manager) IsProcessRunning(processID string) (bool, error) {
 	return result.Running, nil
 }
 
-func (m *Manager) MountPath(name string, hostPath string, guestPath string) error {
+func (m *Manager) MountPath(processID string, subpath string, mountName string, mode string) error {
 	// virtio-9p mounts need to be configured at QEMU launch time.
 	// For now, return not implemented.
 	return fmt.Errorf("dynamic mount not yet implemented; configure mounts before VM start")
 }
 
-func (m *Manager) ReadFile(name string, path string) ([]byte, error) {
+func (m *Manager) ReadFile(processName string, filePath string) ([]byte, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -254,7 +254,7 @@ func (m *Manager) ReadFile(name string, path string) ([]byte, error) {
 
 	resp, err := m.vsock.SendCommand(map[string]interface{}{
 		"method": "readFile",
-		"path":   path,
+		"path":   filePath,
 	})
 	if err != nil {
 		return nil, err
