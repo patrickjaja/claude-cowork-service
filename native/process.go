@@ -33,6 +33,8 @@ type localProcess struct {
 	stdin             io.WriteCloser
 	done              chan struct{}
 	exitCode          int
+	ready             chan struct{} // closed when first output received, signaling stdin is safe
+	readyOnce         sync.Once    // ensures ready is closed exactly once
 	mu                sync.Mutex
 	vmPrefix          []byte      // e.g. "/sessions/optimistic-nice-brahmagupta"
 	realPrefix        []byte      // e.g. "/home/user/.local/share/claude-cowork/sessions/optimistic-nice-brahmagupta"
@@ -177,6 +179,7 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 		cmd:               c,
 		stdin:             stdin,
 		done:              make(chan struct{}),
+		ready:             make(chan struct{}),
 		mountRemap:        mountRemap,
 		reverseMountRemap: reverseMountRemap,
 	}
@@ -278,6 +281,15 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024) // 10MB max for large Opus stream-json lines
 	for scanner.Scan() {
 		line := scanner.Text() + "\n"
+
+		// Signal that the CLI process is alive and producing output.
+		// writeStdin waits on this before sending data to avoid broken pipe
+		// errors when Desktop writes stdin before the CLI has initialized.
+		if lp != nil {
+			lp.readyOnce.Do(func() {
+				close(lp.ready)
+			})
+		}
 
 		// Remap real paths → VM paths in output (only when /sessions/ is accessible).
 		// Without this guard, native Linux (no root) would produce /sessions/ paths
@@ -644,6 +656,19 @@ func (pt *processTracker) writeStdin(processID string, data []byte) error {
 	case <-lp.done:
 		return fmt.Errorf("process %s has exited", processID)
 	default:
+	}
+
+	// Wait for the CLI to be ready before writing stdin.
+	// The broken pipe race condition occurs when Desktop sends stdin data
+	// before the CLI has fully initialized. We wait for the first output
+	// from the CLI (which signals it's alive and processing) before writing.
+	select {
+	case <-lp.ready:
+		// CLI is ready
+	case <-lp.done:
+		return fmt.Errorf("process %s exited before becoming ready", processID)
+	case <-time.After(5 * time.Second):
+		log.Printf("[native] WARNING: %s not ready after 5s, proceeding with stdin write anyway", processID)
 	}
 
 	// Write with timeout to avoid blocking forever if stdin buffer is full
