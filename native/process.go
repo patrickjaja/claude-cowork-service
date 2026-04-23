@@ -491,6 +491,12 @@ func (pt *processTracker) tryHandlePresentFiles(lp *localProcess, line string) b
 }
 
 // kill sends a signal to a process. If signal is empty, defaults to SIGTERM.
+//
+// For SIGTERM (the default), we first attempt a graceful shutdown by sending
+// SIGINT and waiting up to 3 seconds for the process to exit. This allows the
+// Claude CLI to flush pending tool results to the queue JSONL file, preventing
+// session data loss from mid-stream kills (the root cause of session corruption
+// where the queue file gets truncated while a tool execution is in progress).
 func (pt *processTracker) kill(processID string, signal string) error {
 	pt.mu.RLock()
 	lp, ok := pt.processes[processID]
@@ -505,6 +511,23 @@ func (pt *processTracker) kill(processID string, signal string) error {
 	}
 
 	sig := mapSignal(signal)
+
+	// For non-SIGKILL signals, attempt graceful shutdown first:
+	// 1. Send SIGINT (Claude CLI handles this and flushes pending writes)
+	// 2. Wait up to 3 seconds for the process to exit cleanly
+	// 3. If still running, escalate to the requested signal on the process group
+	if sig != syscall.SIGKILL {
+		log.Printf("[native] graceful drain: sending SIGINT to %s, waiting up to 3s for flush", processID)
+		lp.cmd.Process.Signal(syscall.SIGINT)
+
+		select {
+		case <-lp.done:
+			log.Printf("[native] graceful drain: %s exited cleanly after SIGINT", processID)
+			return nil
+		case <-time.After(3 * time.Second):
+			log.Printf("[native] graceful drain: %s did not exit in 3s, escalating to %s", processID, signalName(sig))
+		}
+	}
 
 	// Kill the entire process group
 	pgid, err := syscall.Getpgid(lp.cmd.Process.Pid)

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -135,15 +137,32 @@ func (b *Backend) StartVM(name string, bundlePath string, memoryGB int) error {
 }
 
 func (b *Backend) StopVM(name string) error {
+	if b.debug {
+		log.Printf("[native] stopVM %s — initiating graceful shutdown", name)
+	}
+
+	// Backup session files before killing processes.
+	// This preserves the queue JSONL state in case the graceful drain
+	// in kill() doesn't complete before the process is terminated.
+	home, _ := os.UserHomeDir()
+	sessionDir := filepath.Join(home, ".local", "share", "claude-cowork", "sessions", name)
+	if _, err := os.Stat(sessionDir); err == nil {
+		backupDir := sessionDir + ".pre-stop-" + time.Now().Format("20060102-150405")
+		if cpErr := exec.Command("cp", "-a", sessionDir, backupDir).Run(); cpErr != nil {
+			log.Printf("[native] WARNING: pre-stop backup failed: %v", cpErr)
+		} else {
+			log.Printf("[native] pre-stop backup created: %s", backupDir)
+			// Prune old backups: keep only the 5 most recent
+			go pruneBackups(sessionDir, 5)
+		}
+	}
+
 	b.mu.Lock()
 	b.started = false
 	b.mu.Unlock()
 
 	b.tracker.killAll()
 
-	if b.debug {
-		log.Printf("[native] stopVM %s", name)
-	}
 	b.emitEvent(map[string]string{"type": "vmStopped", "name": name})
 	return nil
 }
@@ -559,5 +578,40 @@ func (b *Backend) emitEvent(event interface{}) {
 
 	for _, cb := range subs {
 		go cb(event)
+	}
+}
+
+// pruneBackups removes old pre-stop backup directories, keeping only the
+// `keep` most recent ones. Backups are identified by the ".pre-stop-" suffix
+// pattern in the session directory's parent.
+func pruneBackups(sessionDir string, keep int) {
+	parent := filepath.Dir(sessionDir)
+	base := filepath.Base(sessionDir)
+	prefix := base + ".pre-stop-"
+
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+
+	var backups []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), prefix) {
+			backups = append(backups, filepath.Join(parent, e.Name()))
+		}
+	}
+
+	// Sort lexicographically (timestamp suffix ensures chronological order)
+	sort.Strings(backups)
+
+	// Remove oldest backups, keeping `keep` most recent
+	if len(backups) > keep {
+		for _, old := range backups[:len(backups)-keep] {
+			if err := os.RemoveAll(old); err != nil {
+				log.Printf("[native] failed to prune backup %s: %v", old, err)
+			} else {
+				log.Printf("[native] pruned old backup: %s", old)
+			}
+		}
 	}
 }
