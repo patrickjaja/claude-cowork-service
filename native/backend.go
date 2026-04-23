@@ -121,6 +121,11 @@ func (b *Backend) StartVM(name string, bundlePath string, memoryGB int) error {
 
 	log.Printf("[native] startVM %s — running natively on host", name)
 
+	// Run session integrity checks in background (non-blocking).
+	// Scans for half-written JSONL files, orphaned pre-stop backups,
+	// and other signs of previous unclean shutdown.
+	go b.checkSessionIntegrity(name)
+
 	// Emit startup events asynchronously to avoid race with subscribeEvents
 	// (both calls arrive simultaneously on different connections)
 	go func() {
@@ -578,6 +583,65 @@ func (b *Backend) emitEvent(event interface{}) {
 
 	for _, cb := range subs {
 		go cb(event)
+	}
+}
+
+// checkSessionIntegrity runs background integrity checks on session files
+// for the given VM name. This detects signs of previous unclean shutdowns
+// (truncated JSONL, orphaned backups) and logs warnings.
+//
+// This intentionally does NOT auto-repair — that's left to cowork-session-doctor
+// which can be run interactively. We only log diagnostics here.
+func (b *Backend) checkSessionIntegrity(name string) {
+	home, _ := os.UserHomeDir()
+	sessionsDir := filepath.Join(home, ".local", "share", "claude-cowork", "sessions")
+
+	if _, err := os.Stat(sessionsDir); err != nil {
+		return
+	}
+
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return
+	}
+
+	backupCount := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		eName := e.Name()
+
+		// Count orphaned pre-stop backups
+		if strings.Contains(eName, ".pre-stop-") {
+			backupCount++
+			continue
+		}
+
+		// Check session directories for JSONL integrity
+		sessionDir := filepath.Join(sessionsDir, eName)
+		auditPath := filepath.Join(sessionDir, "audit.jsonl")
+		if info, err := os.Stat(auditPath); err == nil {
+			if info.Size() == 0 {
+				log.Printf("[native] INTEGRITY WARNING: empty audit.jsonl in session %s", eName)
+			} else {
+				// Check if audit.jsonl ends with a complete line (no truncation)
+				f, err := os.Open(auditPath)
+				if err == nil {
+					buf := make([]byte, 1)
+					f.Seek(info.Size()-1, 0)
+					n, _ := f.Read(buf)
+					if n > 0 && buf[0] != '\n' {
+						log.Printf("[native] INTEGRITY WARNING: audit.jsonl in session %s may be truncated (no trailing newline)", eName)
+					}
+					f.Close()
+				}
+			}
+		}
+	}
+
+	if backupCount > 0 {
+		log.Printf("[native] startup: found %d pre-stop backup(s) in %s", backupCount, sessionsDir)
 	}
 }
 
