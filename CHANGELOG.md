@@ -4,6 +4,18 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- **Upstream update to Claude Desktop v1.5354.0** (from v1.4758.0)
+- **cowork-svc.exe**: Clean rebuild, same size (12,655,440 bytes), same Go version (go1.24.13). New SHA256 `026c6d2c163498e840b649049cbe3ce3fe451d9cac4dc1bf5077736b551f8cca`. Build date 2026-04-29, VCS revision `9a9e3d5a4a368f0f49a80dc303b0ed1a18bfedad`. No new RPC handler functions — identical handler set.
+- **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums (stable since v1.1.9669)
+- **app.asar**: SDK 0.2.119 → 0.2.121, TypeScript native-preview `7.0.0-dev.20260324.1` → `7.0.0-dev.20260414.1`. Electron 41.3.0 unchanged. New dependency `@ant/rfb-client` (Remote Framebuffer client). New `node-pty` module for PTY-based process spawning.
+- **New Desktop-side features** (no pipe protocol impact): `FramebufferPreview` IPC (11 handlers — remote screen viewing via RFB), `Simulator` IPC (8 handlers — iOS simulator integration, macOS only), `CoworkArtifactBridge.runScheduledTask` (trigger scheduled tasks from artifacts), `CoworkMemory.resetMemories` (memory reset), `CoworkArtifacts.getArtifactThumbnail`, cloud-based memory sync system (23 new `cowork_memory_sync_*` telemetry events), `cowork_browser_cu_always_load` feature gate
+- **Removed Desktop-side features** (no pipe protocol impact): `Custom3pSetup.copyManagedReport`, `Custom3pSetup.probeBootstrapUrl`, `bootstrapAuth` store (3 handlers), `triggerBootstrapAuth`
+- **IPC UUID changed**: `305f54c0-...` → `c0eed8c9-...` (no protocol impact)
+- **No new RPC methods** — all 22 methods, 8 event types, spawn parameters, and wire format are identical
+- **No Go code changes needed**
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.5354.0
+
 ## 1.0.51 — 2026-04-25
 
 ### Changed

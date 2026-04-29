@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis — v1.4758.0
+# Cowork Service Binary Analysis — v1.5354.0
 
 ## Binary Overview
 
@@ -19,7 +19,7 @@ The extract script pulls all files from the same directory level as cowork-svc.e
 | smol-bin.x64.vhdx | 36 MB | Empty ext4 filesystem for sdk-daemon updater |
 | *.json (locale files) | ~15-75 KB each | UI translations (de-DE, en-US, es-419, etc.) |
 | *.png / *.ico | ~2-4 KB each | Tray icons (light/dark, various DPI) |
-| .version | 8 bytes | Version string ("1.4758.0") |
+| .version | 10 bytes | Version string ("1.5354.0") |
 
 ## Windows Architecture
 
@@ -68,22 +68,22 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (v1.4758.0)
+## cowork-svc.exe Deep Analysis (v1.5354.0)
 
 | Property | Value |
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
 | **Module** | github.com/anthropics/cowork-win32-service |
-| **Build date** | unknown |
+| **Build date** | 2026-04-29 |
 | **Size** | 12,655,440 bytes |
-| **SHA256** | 4ccc771f26fd2db82b072f6cf4c61af2802a737940bf5d4436b9a7d28cd9cbc8 |
+| **SHA256** | 026c6d2c163498e840b649049cbe3ce3fe451d9cac4dc1bf5077736b551f8cca |
 
 ### Go Module Structure (from binary strings)
 
 Three packages: `main`, `pipe`, `vm`
 
-**New source files in v1.4758.0:**
+**New source files in v1.4758.0 (unchanged in v1.5354.0):**
 - `cmd/cowork-svc/variant.go` — build variant support
 - `pipe/signature.go` — client signature verification
 - `vm/vhdx.go` — VHDX creation support
