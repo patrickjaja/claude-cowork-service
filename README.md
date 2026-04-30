@@ -283,8 +283,8 @@ This package is an **optional companion** to [claude-desktop-bin](https://github
 - **With this daemon:** Cowork sessions work end-to-end.
 
 The JS patches in claude-desktop-bin that enable Cowork on Linux are:
-- `fix_cowork_linux.py` - extends TypeScript VM client to Linux, replaces Windows pipe with Unix socket
-- `fix_cowork_error_message.py` - shows Linux-specific guidance when daemon isn't running
+- `fix_cowork_linux.nim` - extends TypeScript VM client to Linux, replaces Windows pipe with Unix socket
+- `fix_cowork_error_message.nim` - shows Linux-specific guidance when daemon isn't running
 
 ## Architecture
 
