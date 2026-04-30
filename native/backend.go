@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/patrickjaja/claude-cowork-service/pipe"
 	"github.com/patrickjaja/claude-cowork-service/process"
 )
 
@@ -131,7 +132,7 @@ func (b *Backend) IsGuestConnected(name string) (bool, error) {
 	return true, nil
 }
 
-func (b *Backend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]string) (string, error) {
+func (b *Backend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, _ []byte) (string, error) {
 	if b.debug {
 		log.Printf("[native] spawn: %s %v (cwd=%s, mounts=%v)", cmd, args, cwd, mounts)
 	}
@@ -146,8 +147,8 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		return "", fmt.Errorf("creating session dir: %w", err)
 	}
 
-	for mountName, relPath := range mounts {
-		hostPath := resolveSubpath(home, relPath)
+	for mountName, mount := range mounts {
+		hostPath := resolveSubpath(home, mount.Path)
 		// Skip mounts whose target is not a directory (e.g. app.asar).
 		// Claude Desktop passes every mount as --add-dir to the CLI,
 		// which rejects non-directory paths.
@@ -157,7 +158,9 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 			}
 			continue
 		}
-		os.MkdirAll(hostPath, 0755)
+		if err := os.MkdirAll(hostPath, 0755); err != nil && b.debug {
+			log.Printf("[native] MkdirAll %s: %v", hostPath, err)
+		}
 		linkPath := filepath.Join(mntDir, mountName)
 
 		// Prevent self-referencing symlinks (ELOOP bug).
@@ -176,18 +179,31 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 			}
 		}
 
-		os.Remove(linkPath)
-		os.Symlink(hostPath, linkPath)
+		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) && b.debug {
+			log.Printf("[native] remove stale link %s: %v", linkPath, err)
+		}
+		if err := os.Symlink(hostPath, linkPath); err != nil {
+			if b.debug {
+				log.Printf("[native] symlink %s → %s: %v", linkPath, hostPath, err)
+			}
+			continue
+		}
 		if b.debug {
 			log.Printf("[native] mount: %s → %s", linkPath, hostPath)
 		}
 	}
 
-	// Create /sessions/<name> symlink so absolute VM paths resolve
+	// Create /sessions/<name> symlink so absolute VM paths resolve.
+	// MkdirAll and Symlink both fail without root, which is the common case —
+	// the caller already copes by path-remapping cwd/env in that mode.
 	topSessionDir := "/sessions/" + name
-	os.MkdirAll("/sessions", 0755) // may fail without root — that's ok
+	if err := os.MkdirAll("/sessions", 0755); err != nil && b.debug {
+		log.Printf("[native] MkdirAll /sessions: %v (expected without root)", err)
+	}
 	if _, err := os.Lstat(topSessionDir); err != nil {
-		os.Symlink(realSessionDir, topSessionDir)
+		if err := os.Symlink(realSessionDir, topSessionDir); err != nil && b.debug {
+			log.Printf("[native] symlink %s → %s: %v (expected without root)", topSessionDir, realSessionDir, err)
+		}
 	}
 
 	// Session prefix used for path remapping (VM paths ↔ real paths)
@@ -236,11 +252,11 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 	// The session's mnt/ dir uses symlinks for mounts, but Glob doesn't follow
 	// directory symlinks, so files aren't found. Setting cwd to the actual
 	// workspace path lets the model search real files directly.
-	for mountName, relPath := range mounts {
+	for mountName, mount := range mounts {
 		if strings.HasPrefix(mountName, ".") || mountName == "uploads" || mountName == "outputs" {
 			continue
 		}
-		wsPath := resolveSubpath(home, relPath)
+		wsPath := resolveSubpath(home, mount.Path)
 		if info, err := os.Stat(wsPath); err == nil && info.IsDir() {
 			if b.debug {
 				log.Printf("[native] using workspace mount %q as cwd: %s (was %s)", mountName, wsPath, cwd)
@@ -256,8 +272,6 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 			delete(env, k)
 		}
 	}
-
-
 
 	// SDK MCP servers (dispatch, cowork, session_info, etc.) are kept in
 	// --mcp-config as {type:"sdk"} stubs. The CLI sends control_request
@@ -325,9 +339,9 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		// Also tell the model the real outputs path so it doesn't waste tool calls
 		// trying /sessions/ paths (which only exist when /sessions is root-writable).
 		outputsHint := ""
-		for mountName, relPath := range mounts {
+		for mountName, mount := range mounts {
 			if mountName == "outputs" {
-				hostOutputs := resolveSubpath(home, relPath)
+				hostOutputs := resolveSubpath(home, mount.Path)
 				outputsHint = " The outputs directory for this session is at: " + hostOutputs +
 					" — write files there directly. The /sessions/ directory does NOT exist in this environment."
 				break
@@ -355,8 +369,8 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 	//   like present_files fail because Desktop can't resolve native Linux paths.
 	var mountRemap []pathRemap
 	var reverseMountRemap []pathRemap
-	for mountName, relPath := range mounts {
-		hostPath := resolveSubpath(home, relPath)
+	for mountName, mount := range mounts {
+		hostPath := resolveSubpath(home, mount.Path)
 		mntPath := realSessionDir + "/mnt/" + mountName
 		vmMntPath := sessionPrefix + "/mnt/" + mountName
 		if mntPath != hostPath {
@@ -455,8 +469,39 @@ func (b *Backend) SubscribeEvents(name string, callback func(event interface{}))
 	return cancel, nil
 }
 
+// Touch is part of pipe.VMBackend; native has no dead-client watchdog, so no-op.
+func (b *Backend) Touch() {}
+
 func (b *Backend) GetDownloadStatus() string {
 	return "ready"
+}
+
+func (b *Backend) GetSessionsDiskInfo(lowWaterBytes int64) (pipe.SessionsDiskInfo, error) {
+	if b.debug {
+		log.Printf("[native] getSessionsDiskInfo lowWaterBytes=%d (no-op, native mode)", lowWaterBytes)
+	}
+	return pipe.SessionsDiskInfo{
+		TotalBytes: 0,
+		FreeBytes:  0,
+		Sessions:   []interface{}{},
+	}, nil
+}
+
+func (b *Backend) DeleteSessionDirs(names []string) (pipe.DeleteSessionDirsResult, error) {
+	if b.debug {
+		log.Printf("[native] deleteSessionDirs names=%v (no-op, native mode)", names)
+	}
+	return pipe.DeleteSessionDirsResult{
+		Deleted: []string{},
+		Errors:  map[string]string{},
+	}, nil
+}
+
+func (b *Backend) CreateDiskImage(diskName string, sizeGiB int) error {
+	if b.debug {
+		log.Printf("[native] createDiskImage diskName=%q sizeGiB=%d (no-op, native mode)", diskName, sizeGiB)
+	}
+	return nil
 }
 
 func (b *Backend) SendGuestResponse(id string, resultJSON string, errMsg string) error {
