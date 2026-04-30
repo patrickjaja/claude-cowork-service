@@ -237,7 +237,7 @@ cowork-svc-linux -debug
 
 ## How It Works
 
-The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` and handles 18 RPC methods:
+The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` (native) or `cowork-kvm-service.sock` (KVM) and handles 22 RPC methods:
 
 | Method | What it does |
 |--------|-------------|
@@ -259,6 +259,10 @@ The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` and handles 18 R
 | `isDebugLoggingEnabled` | Returns current debug logging state |
 | `subscribeEvents` | Streams process stdout/stderr/exit/startupStep events |
 | `getDownloadStatus` | Returns `"ready"` (no bundle needed) |
+| `getSessionsDiskInfo` | Returns disk usage info for session directories |
+| `deleteSessionDirs` | Deletes specified session directories |
+| `createDiskImage` | Creates a virtual disk image (KVM mode) |
+| `sendGuestResponse` | Handles plugin permission bridge guest responses (no-op on native) |
 
 ### What happens during a Cowork session
 
@@ -298,16 +302,22 @@ The JS patches in claude-desktop-bin that enable Cowork on Linux are:
            │ Unix socket
 ┌──────────▼──────────────────┐
 │ cowork-svc-linux (this)     │
-│  native.Backend             │
+│                             │
+│  Native backend (default):  │
 │  └─ os/exec on host         │
+│                             │
+│  KVM backend (experimental):│
+│  └─ QEMU/KVM VM             │
+│     └─ sdk-daemon (vsock)   │
 └─────────────────────────────┘
 ```
 
 Compare to Windows/macOS:
 ```
-Claude Desktop → cowork-svc.exe → Hyper-V VM → sdk-daemon (vsock)
-Claude Desktop → cowork-svc     → Apple VM   → sdk-daemon (vsock)
-Claude Desktop → cowork-svc-linux → direct host execution (no VM)
+Claude Desktop → cowork-svc.exe   → Hyper-V VM → sdk-daemon (vsock)
+Claude Desktop → cowork-svc       → Apple VM   → sdk-daemon (vsock)
+Claude Desktop → cowork-svc-linux → direct host execution (native, default)
+Claude Desktop → cowork-svc-linux → QEMU/KVM VM → sdk-daemon (vsock, KVM mode)
 ```
 
 ## Protocol Discoveries
@@ -572,7 +582,7 @@ Deep analysis of the upstream Windows binaries and VM bundle we reverse-engineer
 
 | Document | What it tracks |
 |----------|---------------|
-| [COWORK_RPC_PROTOCOL.md](COWORK_RPC_PROTOCOL.md) | All 18 RPC methods, event types, protocol discoveries, Linux adaptations |
+| [COWORK_RPC_PROTOCOL.md](COWORK_RPC_PROTOCOL.md) | All 22 RPC methods, event types, protocol discoveries, Linux adaptations |
 | [COWORK_SVC_BINARY.md](COWORK_SVC_BINARY.md) | `cowork-svc.exe` Go internals, handler functions, app.asar SDK versions, checksums |
 | [COWORK_VM_BUNDLE.md](COWORK_VM_BUNDLE.md) | VM rootfs contents — sdk-daemon, Node.js, Python packages, system packages, checksums |
 
