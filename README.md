@@ -1,17 +1,5 @@
 # claude-cowork-service
 
-> **Bundled into claude-desktop-bin:** Starting with the next release, the
-> cowork service daemon is bundled directly into the
-> [claude-desktop-bin](https://github.com/patrickjaja/claude-desktop-bin)
-> package. You no longer need to install this package separately. If you
-> have it installed, you can safely uninstall it:
-> - Arch: `pacman -R claude-cowork-service`
-> - Debian/Ubuntu: `apt remove claude-cowork-service`
-> - Fedora: `dnf remove claude-cowork-service`
->
-> The claude-desktop-bin launcher will automatically start and stop the
-> bundled daemon alongside Claude Desktop.
-
 [![Claude Desktop](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/version-check.json)](https://claude.ai/download)
 [![AUR version](https://img.shields.io/aur/version/claude-cowork-service)](https://aur.archlinux.org/packages/claude-cowork-service)
 [![APT repo](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/apt-repo.json)](https://patrickjaja.github.io/claude-cowork-service/)
