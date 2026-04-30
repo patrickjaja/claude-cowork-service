@@ -5,16 +5,16 @@ All notable changes to claude-cowork-service will be documented in this file.
 ## Unreleased
 
 ### Added
-- **KVM backend** (`-backend=kvm`) — new QEMU/KVM-based guest runtime that replaces the old dormant VM implementation. Selectable via the `-backend` flag or the `COWORK_VM_BACKEND` environment variable. Listens on a dedicated socket (`cowork-kvm-service.sock`) so native and KVM daemons can coexist in the same `$XDG_RUNTIME_DIR`. Native remains the default.
+- **KVM backend** (`-backend=kvm`) — new QEMU/KVM-based guest runtime that replaces the old dormant VM implementation. Selectable via the `-backend` flag or the `COWORK_VM_BACKEND` environment variable. Listens on a dedicated socket (`cowork-kvm-service.sock`) so native and KVM daemons can coexist in the same `$XDG_RUNTIME_DIR`. Native remains the default. Contributed by [@mosi0815](https://github.com/mosi0815) ([#26](https://github.com/patrickjaja/claude-cowork-service/pull/26)).
   - `vm/backend.go` — session lifecycle, bundle preparation, memory/CPU configuration, process management
   - `vm/bridge.go` — vsock host↔guest JSON message bridge
   - `vm/qemu.go` — QEMU launch spec, root-disk boot (no more throwaway overlay), virtiofs `$HOME` share
   - `vm/qmp.go` — QMP control channel for live networking and shutdown
   - `vm/vfs.go` + `vm/helper.go` — VFS helper runs inside `unshare --user --map-root-user --mount` (invoked via `--vfs-helper` re-exec) to set up mounts without root on the host
   - `vm/preflight.go` — `CheckKvmPrerequisites()` gates startup on `/dev/kvm`, `qemu-system-x86_64`, and vhost-vsock
-- **VHDX → qcow2 conversion caching** — root disk is converted once and reused across reboots. Base-image updates are detected via a trailer canary instead of a full SHA-256 scan, eliminating multi-second startup hashing.
-- **Shared session disk** — session state persists across all sessions of a given host instead of a per-host disk, matching upstream behavior.
-- **Log line truncation** — new `logx` package centralizes log output. Long JSON payloads (RPC params, `EVENT → client`, guest messages, `writeStdin` bodies, MCP-PROXY frames) are now truncated to 160 characters by default with a `…(+N more)` suffix showing how many characters were dropped. Previously these lines ran for thousands of characters or were truncated inconsistently at 200/300/500/2000/5000 characters by two near-duplicate helpers.
+- **VHDX → qcow2 conversion caching** — root disk is converted once and reused across reboots. Base-image updates are detected via a trailer canary instead of a full SHA-256 scan, eliminating multi-second startup hashing. Contributed by [@mosi0815](https://github.com/mosi0815).
+- **Shared session disk** — session state persists across all sessions of a given host instead of a per-host disk, matching upstream behavior. Contributed by [@mosi0815](https://github.com/mosi0815).
+- **Log line truncation** — new `logx` package centralizes log output. Long JSON payloads (RPC params, `EVENT → client`, guest messages, `writeStdin` bodies, MCP-PROXY frames) are now truncated to 160 characters by default with a `…(+N more)` suffix showing how many characters were dropped. Previously these lines ran for thousands of characters or were truncated inconsistently at 200/300/500/2000/5000 characters by two near-duplicate helpers. Contributed by [@mosi0815](https://github.com/mosi0815).
 - **`-log-full-lines` flag** — disables truncation globally for the session when you actually need the full payload. Also accepts `COWORK_LOG_FULL=1` environment variable as a fallback.
 - **`-log-max-len` flag** — override the default 160-character budget.
 

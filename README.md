@@ -149,6 +149,10 @@ sudo make install                  # installs to /usr/bin (default)
 | **Runtime** | bash | Binary resolution in launcher scripts |
 | **Required** | Claude Code CLI | `claude` binary must be in `$PATH` — `npm i -g @anthropic-ai/claude-code` recommended (always latest); declared as `optdepends` in packaging so you control the version |
 | **Optional** | socat | Socket health check fallback |
+| **KVM mode** | qemu-system-x86_64 | QEMU system emulator (only for `COWORK_VM_BACKEND=kvm`) |
+| **KVM mode** | virtiofsd | Virtio filesystem daemon — packaged separately on most distros |
+| **KVM mode** | /dev/kvm | KVM kernel module (`kvm`, `kvm_intel` or `kvm_amd`) |
+| **KVM mode** | /dev/vhost-vsock | Kernel module: `modprobe vhost_vsock` |
 | **Build (from source)** | Go 1.21+ | The daemon is pure Go with no external library dependencies |
 
 ## Claude Code Dependency
@@ -426,6 +430,34 @@ COWORK_VM_BACKEND=kvm ./cowork-svc-linux
 # With debug logging
 ./cowork-svc-linux -backend=kvm -debug
 ```
+
+### Configuring the systemd service
+
+To switch the running service to KVM mode (or set other environment variables), use `systemctl edit`:
+
+```bash
+systemctl --user edit claude-cowork
+```
+
+This opens an editor. Add the following to set the backend:
+
+```ini
+[Service]
+Environment=COWORK_VM_BACKEND=kvm
+```
+
+Save, then restart:
+
+```bash
+systemctl --user restart claude-cowork
+```
+
+Available environment variables:
+
+| Variable | Values | Default | Description |
+|----------|--------|---------|-------------|
+| `COWORK_VM_BACKEND` | `native`, `kvm` | `native` | Backend selection. `native` runs commands directly on the host (no VM). `kvm` runs sessions inside a QEMU/KVM virtual machine. |
+| `COWORK_LOG_FULL` | `1` | *(unset)* | Disable log line truncation (useful for debugging RPC payloads) |
 
 ### Prerequisites
 
