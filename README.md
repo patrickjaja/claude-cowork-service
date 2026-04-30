@@ -7,7 +7,7 @@
 [![Nix flake](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/nix.json)](https://github.com/patrickjaja/claude-cowork-service/blob/main/flake.nix)
 [![Build & Release](https://github.com/patrickjaja/claude-cowork-service/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/patrickjaja/claude-cowork-service/actions/workflows/build-and-release.yml)
 
-Native Linux backend for Claude Desktop's **Cowork** feature. Reverse-engineered from Windows [`cowork-svc.exe`](https://github.com/anthropics/cowork-win32-service) bundled with Claude Desktop v1.1.4173.
+Native Linux backend for Claude Desktop's **Cowork** feature. Reverse-engineered from Windows `cowork-svc.exe` bundled with Claude Desktop.
 
 ## What This Is
 
