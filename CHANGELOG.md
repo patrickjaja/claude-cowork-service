@@ -19,7 +19,60 @@ All notable changes to claude-cowork-service will be documented in this file.
 - **`-log-max-len` flag** — override the default 160-character budget.
 
 ### Changed
-- **Upstream update to Claude Desktop v1.3561.0** (from v1.3109.0)
+- **Upstream update to Claude Desktop v1.5354.0** (from v1.4758.0)
+- **cowork-svc.exe**: Clean rebuild, same size (12,655,440 bytes), same Go version (go1.24.13). New SHA256 `026c6d2c163498e840b649049cbe3ce3fe451d9cac4dc1bf5077736b551f8cca`. Build date 2026-04-29, VCS revision `9a9e3d5a4a368f0f49a80dc303b0ed1a18bfedad`. No new RPC handler functions — identical handler set.
+- **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums (stable since v1.1.9669)
+- **app.asar**: SDK 0.2.119 → 0.2.121, TypeScript native-preview `7.0.0-dev.20260324.1` → `7.0.0-dev.20260414.1`. Electron 41.3.0 unchanged. New dependency `@ant/rfb-client` (Remote Framebuffer client). New `node-pty` module for PTY-based process spawning.
+- **New Desktop-side features** (no pipe protocol impact): `FramebufferPreview` IPC (11 handlers — remote screen viewing via RFB), `Simulator` IPC (8 handlers — iOS simulator integration, macOS only), `CoworkArtifactBridge.runScheduledTask` (trigger scheduled tasks from artifacts), `CoworkMemory.resetMemories` (memory reset), `CoworkArtifacts.getArtifactThumbnail`, cloud-based memory sync system (23 new `cowork_memory_sync_*` telemetry events), `cowork_browser_cu_always_load` feature gate
+- **Removed Desktop-side features** (no pipe protocol impact): `Custom3pSetup.copyManagedReport`, `Custom3pSetup.probeBootstrapUrl`, `bootstrapAuth` store (3 handlers), `triggerBootstrapAuth`
+- **IPC UUID changed**: `305f54c0-...` → `c0eed8c9-...` (no protocol impact)
+- **No new RPC methods** — all 22 methods, 8 event types, spawn parameters, and wire format are identical
+- **No Go code changes needed**
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.5354.0
+
+## 1.0.51 — 2026-04-25
+
+### Changed
+- **Upstream update to Claude Desktop v1.4758.0** (from v1.3883.0)
+- **cowork-svc.exe**: Rebuild, same size (12,655,440 bytes), same Go version (go1.24.13). New SHA256 `4ccc771f26fd2db82b072f6cf4c61af2802a737940bf5d4436b9a7d28cd9cbc8`. New internal features: client binary signature verification (WinVerifyTrust), VHDX sparse disk creation, persistent bidirectional RPC, plugin permission gating, conda/session disk support, idle session cleanup, log file ACL hardening. New source files: `variant.go`, `signature.go`, `vhdx.go`, `logfile_security.go`.
+- **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums (stable since v1.1.9669)
+- **app.asar**: Updated. SDK 0.2.111 → 0.2.119, Electron 41.2.0 → 41.3.0, TypeScript ~5.8.3 → ~6.0.2. New workspace packages (`@ant/disclaimer`, `@ant/dxt-registry`, `@ant/utils`). New toolchain (oxlint/oxfmt). New `computerUseTeach.js` build artifact.
+- **`configure` RPC now sends `userDataName` and `sessionOnly` fields** — Desktop sends a fire-and-forget `configure({userDataName: "Claude", sessionOnly: true})` on pipe connect since v1.4758.0. Go struct updated to accept these fields.
+- **`subscribeEvents` RPC now sends `userDataName` field** — Go struct updated to accept this field.
+- **New Desktop-side environment variables** (pass-through, no handler changes): `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `CLAUDE_CODE_CLASSIFIER_SUMMARY`, `CLAUDE_CODE_ENABLE_APPEND_SUBAGENT_PROMPT`, `CLAUDE_CODE_ENABLE_TASKS`, `CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS`, `CLAUDE_CODE_RATE_LIMIT_TIER`, `CLAUDE_CODE_SUBSCRIPTION_TYPE`, `CLAUDE_COWORK_MEMORY_GUIDELINES`, `CLAUDE_FORCE_HOST_LOOP`
+- **Removed env vars**: `CLAUDE_CODE_PROXY_RESOLVES_HOSTS`, `CLAUDE_INTERNAL_FC_OVERRIDES`, `CLAUDE_RPC_TOKEN`
+- **New Desktop-side features** (no pipe protocol impact): `askClaude` CoworkArtifact bridge (replaces `sample`), `openExternalUrl` artifact method, SSH transport backend, config management API (`createConfig`/`readConfig`/`writeConfig`/`deleteConfig`), git worktree operations, `setFastMode`, `setDeploymentMode`, session adoption/classification, space summarization, `parkAndCapture` artifacts, `probeEgressHosts`/`probeBootstrapUrl` connectivity probing
+- **IPC UUID changed** (no protocol impact)
+- **Feature gate count**: 43 → 58 (15 new gates)
+- **No new RPC methods** — all 22 methods, 8 event types, spawn parameters, and wire format are identical
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.4758.0
+
+### Added
+- **`userDataName` field in `configureParams` struct** (`pipe/handlers.go`) — accepts the new parameter from Desktop v1.4758.0
+- **`sessionOnly` field in `configureParams` struct** (`pipe/handlers.go`) — accepts fire-and-forget on-connect configure calls
+- **`userDataName` field in `vmNameParams` struct** (`pipe/handlers.go`) — accepts the new parameter in subscribeEvents
+
+## 1.0.50 — 2026-04-22
+
+### Changed
+- **Upstream update to Claude Desktop v1.3883.0** (from v1.3561.0)
+- **cowork-svc.exe**: Minor rebuild (+512 bytes, 12,654,928 → 12,655,440 bytes), same Go version (go1.24.13). Build date 2026-04-21, VCS revision `93ff6cb984386882b4bd9b6bca80d4cf5af8e13b`. New `configure: %w` error wrapping (replaces `Config %`). No new RPC handler functions.
+- **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums
+- **app.asar**: Grew significantly (~23 MB → ~28 MB, +19.5%). All changes client-side; pipe protocol unchanged.
+- **claude-agent-sdk**: Unchanged at 0.2.111. MCP protocol version 2.1.111. Electron unchanged.
+- **`default.clod` removed** from installer — no longer shipped
+- **New Desktop-side features** (no pipe protocol impact): `coworkArtifacts` feature flag, `coworkSpaceContextEnabled` setting, `DebugHandoff` URL handler, `list_connectors` internal MCP tool, multi-plugin `suggest_plugin_install` schema, `present_files` atomic file writes, OAuth localhost HTTP support, title-gen `--model` flag, `dispatch_child` gains space/directory/active_children fields, `RemoteProcess.rebind()` gains `canReattach`, `PluginOAuthStorage.clientConfig` key
+- **IPC UUID change**: `df0aa1df...` → `4ab9ae55-583a-4867-90be-23b2daff8899` (no protocol impact)
+- **No Go code changes needed for protocol** — all 22 RPC methods, 8 event types, spawn parameters, and wire format are identical
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.3883.0
+
+### Fixed
+- **Reverse mount path remapping applied unconditionally** — `streamOutput()` applied `reverseMountRemap` (real host paths → VM `/sessions/` paths) even when `reverseMap=false` (native Linux without root). This caused bash command output (e.g., `wc -l` filenames) to contain `/sessions/<name>/mnt/...` paths that don't exist on disk, breaking subsequent model tool calls. Now both mount-level and session-level reverse mapping are gated behind the `reverseMap` flag.
+- **`readFile` RPC parameter mismatch** — Desktop sends `{processName, filePath}` and expects `{content}` in response. Our handler was parsing `{name, path}` and returning `{data}`. Fixed JSON tags and response field name. (Pre-existing bug, not introduced by v1.3883.0)
+- **`mountPath` RPC parameter mismatch** — Desktop sends `{processId, subpath, mountName, mode}`. Our handler was parsing `{name, hostPath, guestPath}`. Fixed JSON tags and updated VMBackend interface. (Pre-existing bug, not introduced by v1.3883.0; mountPath is a no-op in native mode so this had no functional impact)
+
+### Changed (prior releases in this cycle)
+- **Prior upstream update to Claude Desktop v1.3561.0** (from v1.3109.0)
 - **cowork-svc.exe**: Minor rebuild (+6,656 bytes, 12,648,272 → 12,654,928 bytes), same Go version (go1.24.13). Build date 2026-04-20, VCS revision `fbc74be3fdc714a2c46ef1fb84f71d4e4c062930`. No new RPC handler functions; certificate date rotation in embedded TLS certs.
 - **Default socket path depends on backend** — native keeps the historical `cowork-vm-service.sock` for Desktop compatibility; KVM uses `cowork-kvm-service.sock` so Desktop can tell the two modes apart by which socket exists.
 - **Logging call sites consolidated** — `pipe/handlers.go` (RPC dispatch, `handleWriteStdin`, `handleSpawn`, `handleSubscribeEvents`), `vm/bridge.go`, `vm/backend.go`, and `native/process.go` now route through `logx.Debug` / `logx.Info`, removing scattered `if h.debug { log.Printf(...) }` wrappers. The `setDebugLogging` RPC still toggles debug output at runtime.

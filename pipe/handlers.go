@@ -91,12 +91,15 @@ func (h *Handler) Handle(conn net.Conn, payload []byte) {
 // Parameter types for RPC methods
 
 type configureParams struct {
-	MemoryMB int `json:"memoryMB"`
-	CPUCount int `json:"cpuCount"`
+	MemoryMB     int    `json:"memoryMB"`
+	CPUCount     int    `json:"cpuCount"`
+	UserDataName string `json:"userDataName"`
+	SessionOnly  bool   `json:"sessionOnly"`
 }
 
 type vmNameParams struct {
-	Name string `json:"name"`
+	Name         string `json:"name"`
+	UserDataName string `json:"userDataName"`
 }
 
 type createVMParams struct {
@@ -168,11 +171,6 @@ type readFileParams struct {
 type oauthTokenParams struct {
 	Name  string `json:"name"`
 	Token string `json:"token"`
-}
-
-type installSdkParams struct {
-	SdkSubpath string `json:"sdkSubpath"`
-	Version    string `json:"version"`
 }
 
 type debugLoggingParams struct {
@@ -370,17 +368,16 @@ func (h *Handler) handleReadFile(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	// Desktop's Linux client reads `response.result.content`.
 	WriteResponse(conn, req.ID, map[string]interface{}{"content": string(data)})
 }
 
 func (h *Handler) handleInstallSdk(conn net.Conn, req Request) {
-	var p installSdkParams
+	var p vmNameParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if err := h.backend.InstallSdk(p.SdkSubpath, p.Version); err != nil {
+	if err := h.backend.InstallSdk(p.Name); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}

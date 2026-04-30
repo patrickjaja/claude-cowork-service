@@ -40,7 +40,7 @@ type VMBackend interface {
 	IsProcessRunning(processID string) (bool, error)
 	MountPath(processID string, subpath string, mountName string, mode string) error
 	ReadFile(processName string, filePath string) ([]byte, error)
-	InstallSdk(sdkSubpath string, version string) error
+	InstallSdk(name string) error
 	AddApprovedOauthToken(name string, token string) error
 	SetDebugLogging(enabled bool)
 	SubscribeEvents(name string, callback func(event interface{})) (cancel func(), err error)

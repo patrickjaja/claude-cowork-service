@@ -137,17 +137,6 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		log.Printf("[native] spawn: %s %v (cwd=%s, mounts=%v)", cmd, args, cwd, mounts)
 	}
 
-	// Log dispatch-critical env vars and tool args for debugging
-	log.Printf("[native] DISPATCH-DEBUG: CLAUDE_CODE_BRIEF=%q", env["CLAUDE_CODE_BRIEF"])
-	for i, a := range args {
-		if a == "--tools" && i+1 < len(args) {
-			log.Printf("[native] DISPATCH-DEBUG: --tools=%s", args[i+1])
-		}
-		if a == "--allowedTools" && i+1 < len(args) {
-			log.Printf("[native] DISPATCH-DEBUG: --allowedTools=%s", args[i+1])
-		}
-	}
-
 	// The client sends VM paths like /sessions/<name>/mnt/<mount>.
 	// We create these under ~/.local/share/claude-cowork/sessions/ and
 	// symlink /sessions/<name> → there so the absolute paths work.
@@ -424,10 +413,9 @@ func (b *Backend) IsProcessRunning(processID string) (bool, error) {
 }
 
 func (b *Backend) MountPath(processID string, subpath string, mountName string, mode string) error {
-	// Paths are already native — no mounting needed. Spawn handles the
-	// per-session symlink layout via additionalMounts instead.
+	// Paths are already native — no mounting needed
 	if b.debug {
-		log.Printf("[native] mountPath %s=%s (%s) (no-op, paths are native)", mountName, subpath, mode)
+		log.Printf("[native] mountPath processId=%s subpath=%s mountName=%s mode=%s (no-op, paths are native)", processID, subpath, mountName, mode)
 	}
 	return nil
 }
@@ -439,9 +427,9 @@ func (b *Backend) ReadFile(processName string, filePath string) ([]byte, error) 
 	return os.ReadFile(filePath)
 }
 
-func (b *Backend) InstallSdk(sdkSubpath string, version string) error {
+func (b *Backend) InstallSdk(name string) error {
 	if b.debug {
-		log.Printf("[native] installSdk %s@%s (no-op)", sdkSubpath, version)
+		log.Printf("[native] installSdk (no-op)")
 	}
 	return nil
 }

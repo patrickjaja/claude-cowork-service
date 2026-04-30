@@ -552,16 +552,11 @@ func (b *KvmBackend) ReadFile(processName string, filePath string) ([]byte, erro
 	return os.ReadFile(resolved)
 }
 
-// InstallSdk binds the SDK install dir rw into the virtiofs share so the
-// guest can download the binary there, then forwards {sdkSubpath, version}
-// to the guest sdk-daemon. If the helper or the guest isn't up yet, queue
-// the work so it runs before the first spawn.
-func (b *KvmBackend) InstallSdk(sdkSubpath string, version string) error {
-	log.Printf("[kvm] installSdk %s@%s", sdkSubpath, version)
+func (b *KvmBackend) InstallSdk(name string) error {
+	log.Printf("[kvm] installSdk %s", name)
 
 	params := map[string]interface{}{
-		"sdkSubpath": sdkSubpath,
-		"version":    version,
+		"name": name,
 	}
 
 	b.mu.Lock()
@@ -569,14 +564,14 @@ func (b *KvmBackend) InstallSdk(sdkSubpath string, version string) error {
 	bridge := b.bridge
 	helperReady := helper != nil
 	b.pendingSdkInstall = params
-	if sdkSubpath != "" && !helperReady {
-		b.pendingSdkBind = &pendingBind{subpath: sdkSubpath, mode: "rw"}
+	if name != "" && !helperReady {
+		b.pendingSdkBind = &pendingBind{subpath: name, mode: "rw"}
 	}
 	b.mu.Unlock()
 
 	// Bind now if the helper is already up; replayed by StartVM otherwise.
-	if sdkSubpath != "" && helperReady {
-		if err := helper.Bind(sdkSubpath, "rw"); err != nil {
+	if name != "" && helperReady {
+		if err := helper.Bind(name, "rw"); err != nil {
 			log.Printf("[kvm] installSdk bind failed: %v", err)
 		}
 	}

@@ -277,17 +277,15 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 	for scanner.Scan() {
 		line := scanner.Text() + "\n"
 
-		// Remap real mount target paths → VM mount paths in output.
-		// Must happen BEFORE the session prefix remap (more specific first).
-		// Example: /home/user/.config/Claude/.../outputs/ → /sessions/<name>/mnt/outputs/
-		if lp != nil {
+		// Remap real paths → VM paths in output (only when /sessions/ is accessible).
+		// Without this guard, native Linux (no root) would produce /sessions/ paths
+		// that don't exist, causing the model's subsequent bash commands to fail.
+		if lp != nil && lp.reverseMap {
+			// Mount-level first (more specific): real mount target → VM mount path
 			for _, rm := range lp.reverseMountRemap {
 				line = string(bytes.ReplaceAll([]byte(line), rm.from, rm.to))
 			}
-		}
-
-		// Remap real session prefix → VM session prefix in output
-		if lp != nil && lp.reverseMap {
+			// Session-level: real session prefix → VM session prefix
 			line = string(bytes.ReplaceAll([]byte(line), lp.realPrefix, lp.vmPrefix))
 		}
 

@@ -1,4 +1,4 @@
-# Cowork VM Bundle Reference — v1.3561.0
+# Cowork VM Bundle Reference — v1.5354.0
 
 > Re-validate on every upstream Claude Desktop version update.
 
@@ -11,7 +11,7 @@
 
 ## Current Config (v1.2.234)
 
-> **Note:** The VM bundle SHA and all file checksums are unchanged since v1.1.9669. Only the Claude Desktop version changed.
+> **Note:** The VM bundle SHA and all file checksums have been unchanged since v1.1.9669, stable across all versions through v1.5354.0. Only the Claude Desktop version changed.
 
 - **SHA:** `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d`
 - **Platforms:** darwin (arm64, x64), win32 (arm64, x64)
@@ -64,7 +64,7 @@
 vm-bundle/
 ├── rootfs.vhdx.zst          (2.2 GB compressed)
 ├── vmlinuz.zst              (15 MB compressed)
-├── initrd.zst               (164 MB compressed)
+├── initrd.zst               (166 MB compressed)
 ├── vm-bundle-config.json    (parsed from app.asar JS)
 ├── app-asar-extracted/      (full Electron app for investigation)
 └── .version                 (Claude Desktop version, e.g. "1.2.234")
@@ -216,6 +216,10 @@ Key installed packages: build-essential, curl, ffmpeg, gcc-11, ghostscript, git,
 
 | Claude Desktop Version | VM Bundle SHA | Notable Changes |
 |----------------------|--------------|-----------------|
+| 1.5354.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
+| 1.4758.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
+| 1.3883.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
+| 1.3561.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
 | 1.3109.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
 | 1.3036.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
 | 1.2773.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged from v1.1.9669 — same SHA, same checksums |
