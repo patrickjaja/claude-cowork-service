@@ -110,7 +110,7 @@ func (h *vfsHelper) run() int {
 	// representing the host UID virtiofsd actually runs as), and pass host
 	// UID 0 back as guest 0, so ownership is consistent in both
 	// directions and every metadata op stays inside the userns mapping.
-	h.virtiofsd = exec.Command("virtiofsd",
+	h.virtiofsd = exec.Command(FindVirtiofsd(),
 		"--socket-path="+h.socketPath,
 		"--shared-dir", h.stagingDir,
 		"--cache=auto",

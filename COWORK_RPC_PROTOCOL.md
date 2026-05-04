@@ -1,4 +1,4 @@
-# Cowork RPC Protocol Reference — v1.4758.0
+# Cowork RPC Protocol Reference — v1.5354.0
 
 > **This document is the single source of truth for the protocol between Claude Desktop and cowork-svc.**
 > Re-validate on every upstream Claude Desktop version update.

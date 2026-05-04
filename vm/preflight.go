@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -40,9 +41,10 @@ func CheckKvmPrerequisites() PreflightResult {
 			Reason: fmt.Sprintf("/dev/vhost-vsock not accessible: %v", err),
 		}
 	}
-	if _, err := exec.LookPath("virtiofsd"); err != nil {
+	if FindVirtiofsd() == "" {
 		return PreflightResult{
-			Reason: "virtiofsd not found in PATH (install qemu-virtiofsd or the rust-vmm virtiofsd package)",
+			Reason: "virtiofsd not found — install: pacman -S virtiofsd / apt install virtiofsd / dnf install virtiofsd " +
+				"(if already installed, symlink it onto PATH: sudo ln -s /usr/lib/virtiofsd /usr/local/bin/virtiofsd)",
 		}
 	}
 	// Verify unprivileged user namespaces actually work by running a tiny
@@ -62,6 +64,21 @@ func CheckKvmPrerequisites() PreflightResult {
 		}
 	}
 	return PreflightResult{OK: true}
+}
+
+// FindVirtiofsd resolves the virtiofsd binary path. The rust-vmm virtiofsd
+// package installs to /usr/lib/virtiofsd (Arch) or /usr/libexec/virtiofsd
+// (Fedora, Ubuntu) — not on $PATH. NixOS wraps it onto PATH.
+func FindVirtiofsd() string {
+	if p, err := exec.LookPath("virtiofsd"); err == nil {
+		return p
+	}
+	for _, p := range []string{"/usr/lib/virtiofsd", "/usr/libexec/virtiofsd"} {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return p
+		}
+	}
+	return ""
 }
 
 func shortErr(b []byte) string {

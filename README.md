@@ -1,105 +1,24 @@
-# claude-cowork-service — experimental KVM fork
+# claude-cowork-service
 
-> ⚠️ **Experimental fork of [`patrickjaja/claude-cowork-service`](https://github.com/patrickjaja/claude-cowork-service).**
-> This branch adds a real QEMU/KVM backend. It is under active development,
-> not packaged, and the install badges, AUR/APT/DNF repos, and release
-> workflow shown in the upstream README **do not apply here** (GitHub Actions
-> are disabled on this fork). Expect breakage. Do not use on machines you
-> care about. The native backend should continue to work, but the KVM
-> backend is the reason this fork exists and is where the rough edges live.
->
-> **You also need a matching fork of `claude-desktop-bin`.** Upstream
-> `claude-desktop-bin` patches Claude Desktop to speak to the native
-> daemon's socket. The KVM backend in this fork exposes a different socket
-> (`cowork-kvm-service.sock`) and expects a Desktop patched to find it. A
-> companion fork tracks the corresponding JS patches — use it, not the
-> upstream AUR package, if you want to exercise the KVM path end-to-end.
+[![Claude Desktop](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/version-check.json)](https://claude.ai/download)
+[![AUR version](https://img.shields.io/aur/version/claude-cowork-service)](https://aur.archlinux.org/packages/claude-cowork-service)
+[![APT repo](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/apt-repo.json)](https://patrickjaja.github.io/claude-cowork-service/)
+[![RPM repo](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/rpm-repo.json)](https://patrickjaja.github.io/claude-cowork-service/)
+[![Nix flake](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/nix.json)](https://github.com/patrickjaja/claude-cowork-service/blob/main/flake.nix)
+[![Build & Release](https://github.com/patrickjaja/claude-cowork-service/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/patrickjaja/claude-cowork-service/actions/workflows/build-and-release.yml)
 
-## What's different in this fork
-
-- **Real KVM backend (`-backend=kvm`).** Upstream's `vm/` directory was a
-  dormant stub; this fork replaces it with a working implementation:
-  - `vm/backend.go` — session lifecycle, process tracking, host↔guest RPC
-  - `vm/bridge.go` — length-prefixed JSON over AF_VSOCK, with the guest
-    `sdk-daemon`
-  - `vm/qemu.go` — QEMU launch, root-disk boot (no throwaway overlay),
-    VHDX→qcow2 caching with a trailer-canary cache invalidator
-  - `vm/qmp.go` — QMP control channel for live networking / shutdown
-  - `vm/vfs.go` + `vm/helper.go` — virtiofs `$HOME` share driven by a helper
-    re-exec'd under `unshare --user --map-root-user --mount` (no host root
-    required)
-  - `vm/preflight.go` — gates startup on `/dev/kvm`, `qemu-system-x86_64`,
-    and vhost-vsock
-- **Backend-aware socket path.** Native keeps `cowork-vm-service.sock` for
-  Desktop compatibility; KVM uses `cowork-kvm-service.sock` so both daemons
-  can coexist in `$XDG_RUNTIME_DIR`. Select with `-backend=native|kvm` or
-  `COWORK_VM_BACKEND=…`.
-- **Session state persists across reboots.** The guest boots directly off
-  the converted root disk instead of a COW overlay, and the session disk is
-  shared across all sessions of a host.
-- **Centralized logging with line truncation.** New `logx/` package. Default
-  160-char budget with a `…(+N more)` hint for dropped bytes. New flags
-  `-log-full-lines` and `-log-max-len`, plus `COWORK_LOG_FULL=1` env. This
-  replaces two near-duplicate truncation helpers and fixes several call
-  sites that previously dumped multi-kilobyte JSON payloads at every `-debug`
-  tick.
-- **Legacy VM code removed.** `vm/manager.go`, `vm/network.go`,
-  `vm/vsock.go`, and `process/spawn.go` are gone — the new `backend.go`,
-  `bridge.go`, and `qmp.go` subsume their roles with a cleaner architecture.
-
-See [`CHANGELOG.md`](CHANGELOG.md) under `## Unreleased` for the full list.
-
-## Running the KVM backend
-
-Prereqs:
-
-- `qemu-system-x86_64`
-- `virtiofsd` on `$PATH` (the VFS helper re-execs it inside an unprivileged
-  user+mount namespace to share `$HOME` with the guest — on most distros
-  this is packaged separately from QEMU; e.g. `pacman -S virtiofsd`,
-  `apt install virtiofsd`)
-- `/dev/kvm` readable by your user
-- vhost-vsock kernel module loaded (`modprobe vhost_vsock`)
-- A Claude-Desktop-compatible VM bundle under `~/.config/Claude/vm_bundles/`.
-  You don't have to fetch this yourself — the matching fork of
-  `claude-desktop-bin` downloads the bundle automatically on first launch
-  of the Cowork tab, same way upstream Desktop provisions it on macOS and
-  Windows.
-
-```bash
-# Build
-make build
-
-# Run manually with debug logging (systemd unit still targets native mode)
-./cowork-svc-linux -backend=kvm -debug
-
-# Or via env var — pairs with the matching claude-desktop-bin fork
-COWORK_VM_BACKEND=kvm ./cowork-svc-linux
-```
-
-Startup logs are prefixed `[kvm]`; look for `sdk-daemon connected via vsock`
-to confirm the guest came up. `-log-full-lines` disables truncation when you
-need to see a complete RPC/event payload.
-
----
-
-## Upstream README
-
-The rest of this document is inherited from upstream and describes the
-native backend, the RPC protocol, and the Dispatch integration. Most of it
-still applies — only the KVM-specific additions above are new.
-
----
-
-Native Linux backend for Claude Desktop's **Cowork** feature. Reverse-engineered from Windows [`cowork-svc.exe`](https://github.com/anthropics/cowork-win32-service) bundled with Claude Desktop v1.1.4173.
+Native Linux backend for Claude Desktop's **Cowork** feature. Reverse-engineered from Windows `cowork-svc.exe` bundled with Claude Desktop.
 
 ## What This Is
 
-Claude Desktop has a Cowork feature that lets you delegate tasks to a sandboxed Claude Code instance. On macOS it uses Apple's Virtualization framework (Swift), on Windows it uses Hyper-V (Go). On Linux — there's no official support.
+Claude Desktop has a Cowork feature that lets you delegate tasks to a sandboxed Claude Code instance. On macOS it uses Apple's Virtualization framework (Swift), on Windows it uses Hyper-V (Go). On Linux - there's no official support.
 
-This daemon fills that gap. It implements the same length-prefixed JSON-over-Unix-socket protocol that Claude Desktop expects, but instead of managing a VM, it runs commands directly on the host.
+This daemon fills that gap. It implements the same length-prefixed JSON-over-Unix-socket protocol that Claude Desktop expects and offers two backends:
 
-**Key insight:** The VM on macOS/Windows runs Linux anyway. On Linux, we skip the VM and execute natively — because we're already the target OS.
+- **Native** (default) - runs commands directly on the host, no VM overhead.
+- **KVM** (experimental) - runs sessions inside a QEMU/KVM virtual machine, matching the sandboxed execution model of macOS and Windows.
+
+**Key insight:** The VM on macOS/Windows runs Linux anyway. In native mode we skip the VM entirely - because we're already the target OS. In KVM mode we boot the same Anthropic-provided guest image for full parity.
 
 ## Installation
 
@@ -180,16 +99,16 @@ nix run github:patrickjaja/claude-cowork-service
 ### ARM64 / aarch64 (Raspberry Pi 5, NVIDIA DGX Spark, Jetson, etc.)
 
 ```bash
-# Debian/Ubuntu ARM64 (via APT repo — automatic updates)
+# Debian/Ubuntu ARM64 (via APT repo - automatic updates)
 curl -fsSL https://patrickjaja.github.io/claude-cowork-service/install.sh | sudo bash
 sudo apt install claude-cowork-service
 
-# Fedora ARM64 (via DNF repo — automatic updates)
+# Fedora ARM64 (via DNF repo - automatic updates)
 curl -fsSL https://patrickjaja.github.io/claude-cowork-service/install-rpm.sh | sudo bash
 sudo dnf install claude-cowork-service
 ```
 
-The APT and DNF repos serve both x86_64 and arm64 packages — your package manager picks the correct architecture automatically. The quick install script and Nix flake also support ARM64 natively.
+The APT and DNF repos serve both x86_64 and arm64 packages - your package manager picks the correct architecture automatically. The quick install script and Nix flake also support ARM64 natively.
 
 ### Quick Install (Any Distro, x86_64 + ARM64)
 
@@ -225,14 +144,26 @@ sudo make install                  # installs to /usr/bin (default)
 
 > **Note:** No automatic updates. Pull and rebuild to update: `git pull && make && sudo make install`.
 
+### Enable the service
+
+After installing via any method above (except Quick Install, which does this automatically), enable and start the daemon:
+
+```bash
+systemctl --user enable --now claude-cowork
+```
+
 ## Dependencies
 
 | Category | Dependency | Notes |
 |----------|-----------|-------|
 | **Runtime** | systemd | User service management (`systemctl --user`) |
 | **Runtime** | bash | Binary resolution in launcher scripts |
-| **Required** | Claude Code CLI | `claude` binary must be in `$PATH` — `npm i -g @anthropic-ai/claude-code` recommended (always latest); declared as `optdepends` in packaging so you control the version |
+| **Required** | Claude Code CLI | `claude` binary must be in `$PATH` - `npm i -g @anthropic-ai/claude-code` recommended (always latest); declared as `optdepends` in packaging so you control the version |
 | **Optional** | socat | Socket health check fallback |
+| **KVM mode** | qemu-system-x86_64 | QEMU system emulator (only for `COWORK_VM_BACKEND=kvm`) |
+| **KVM mode** | virtiofsd | Virtio filesystem daemon - packaged separately on most distros |
+| **KVM mode** | /dev/kvm | KVM kernel module (`kvm`, `kvm_intel` or `kvm_amd`) |
+| **KVM mode** | /dev/vhost-vsock | Kernel module: `modprobe vhost_vsock` |
 | **Build (from source)** | Go 1.21+ | The daemon is pure Go with no external library dependencies |
 
 ## Claude Code Dependency
@@ -286,25 +217,13 @@ ExecStartPre=-/bin/bash -c 'systemctl --user import-environment WAYLAND_DISPLAY 
 
 The leading `-` on `ExecStartPre` means the service still starts even if the import command fails (e.g. some variables may not exist on all setups).
 
-## Quick Start
-
-```bash
-# 1. Enable and start the daemon
-systemctl --user enable --now claude-cowork
-
-# 2. Install Claude Desktop (if not already)
-yay -S claude-desktop-bin
-
-# 3. Open Claude Desktop → Cowork tab → send a message
-```
-
-### Verify it's running
+## Verify it's running
 
 ```bash
 systemctl --user status claude-cowork
 ```
 
-### Debug mode
+## Debug mode
 
 ```bash
 # Stop systemd service and run manually with debug output
@@ -314,11 +233,11 @@ cowork-svc-linux -debug
 
 ## How It Works
 
-The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` and handles 18 RPC methods:
+The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` (native) or `cowork-kvm-service.sock` (KVM) and handles 22 RPC methods:
 
 | Method | What it does |
 |--------|-------------|
-| `configure` | Accepts VM config (ignored — no VM) |
+| `configure` | Accepts VM config (ignored - no VM) |
 | `createVM` | Creates session directory |
 | `startVM` | Emits `vmStarted` + `apiReachability` events |
 | `stopVM` | Kills all spawned processes, cleans up |
@@ -336,6 +255,10 @@ The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` and handles 18 R
 | `isDebugLoggingEnabled` | Returns current debug logging state |
 | `subscribeEvents` | Streams process stdout/stderr/exit/startupStep events |
 | `getDownloadStatus` | Returns `"ready"` (no bundle needed) |
+| `getSessionsDiskInfo` | Returns disk usage info for session directories |
+| `deleteSessionDirs` | Deletes specified session directories |
+| `createDiskImage` | Creates a virtual disk image (KVM mode) |
+| `sendGuestResponse` | Handles plugin permission bridge guest responses (no-op on native) |
 
 ### What happens during a Cowork session
 
@@ -345,7 +268,7 @@ The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` and handles 18 R
 4. Daemon remaps the path, resolves the binary, starts `claude` via `os/exec`
 5. Claude Desktop sends `writeStdin` with an `initialize` control request (including `sdkMcpServers`), then user messages
 6. Claude Code's `stream-json` output (on stderr) is emitted as stdout events back to Claude Desktop
-7. SDK MCP tool calls use `control_request`/`control_response` messages embedded in the stdout/stdin streams — Desktop's session manager handles the bidirectional proxy automatically (identical to VM mode)
+7. SDK MCP tool calls use `control_request`/`control_response` messages embedded in the stdout/stdin streams - Desktop's session manager handles the bidirectional proxy automatically (identical to VM mode)
 8. The UI shows the streamed response in real-time
 
 ### Path remapping
@@ -360,15 +283,8 @@ This package is an **optional companion** to [claude-desktop-bin](https://github
 - **With this daemon:** Cowork sessions work end-to-end.
 
 The JS patches in claude-desktop-bin that enable Cowork on Linux are:
-- `fix_cowork_linux.py` — extends TypeScript VM client to Linux, replaces Windows pipe with Unix socket
-- `fix_cowork_error_message.py` — shows Linux-specific guidance when daemon isn't running
-
-> **Fork note.** The upstream AUR build of `claude-desktop-bin` patches Desktop
-> to talk to the **native** socket (`cowork-vm-service.sock`). The KVM backend
-> in this fork listens on `cowork-kvm-service.sock`, which upstream Desktop
-> will not probe. Running the KVM path end-to-end requires a matching fork of
-> `claude-desktop-bin` with patches for the KVM socket — use that, not the
-> stock AUR package.
+- `fix_cowork_linux.nim` - extends TypeScript VM client to Linux, replaces Windows pipe with Unix socket
+- `fix_cowork_error_message.nim` - shows Linux-specific guidance when daemon isn't running
 
 ## Architecture
 
@@ -382,16 +298,22 @@ The JS patches in claude-desktop-bin that enable Cowork on Linux are:
            │ Unix socket
 ┌──────────▼──────────────────┐
 │ cowork-svc-linux (this)     │
-│  native.Backend             │
+│                             │
+│  Native backend (default):  │
 │  └─ os/exec on host         │
+│                             │
+│  KVM backend (experimental):│
+│  └─ QEMU/KVM VM             │
+│     └─ sdk-daemon (vsock)   │
 └─────────────────────────────┘
 ```
 
 Compare to Windows/macOS:
 ```
-Claude Desktop → cowork-svc.exe → Hyper-V VM → sdk-daemon (vsock)
-Claude Desktop → cowork-svc     → Apple VM   → sdk-daemon (vsock)
-Claude Desktop → cowork-svc-linux → direct host execution (no VM)
+Claude Desktop → cowork-svc.exe   → Hyper-V VM → sdk-daemon (vsock)
+Claude Desktop → cowork-svc       → Apple VM   → sdk-daemon (vsock)
+Claude Desktop → cowork-svc-linux → direct host execution (native, default)
+Claude Desktop → cowork-svc-linux → QEMU/KVM VM → sdk-daemon (vsock, KVM mode)
 ```
 
 ## Protocol Discoveries
@@ -408,7 +330,7 @@ During reverse engineering, we found 12 mismatches between the documented/expect
 | 6 | Client needs `apiReachability` event (not just `isGuestConnected`) | Client stuck after boot | Emit `apiReachability` during startVM |
 | 7 | Args also contain VM paths (not just cwd/env) | `--plugin-dir /sessions/...` unresolvable | Remap args too |
 | 8 | Empty env vars (`ANTHROPIC_API_KEY=""`) break auth | Valid OAuth token ignored | Strip empty env vars |
-| 9 | `sdkMcpServers` in MCP config blocks Claude Code | Process hangs at init — zero output | ~~Strip SDK servers from config~~ **RESOLVED**: was caused by other bugs (#3, #4, #8); SDK servers now pass through and work via event-stream MCP proxy |
+| 9 | `sdkMcpServers` in MCP config blocks Claude Code | Process hangs at init - zero output | ~~Strip SDK servers from config~~ **RESOLVED**: was caused by other bugs (#3, #4, #8); SDK servers now pass through and work via event-stream MCP proxy |
 | 10 | Claude Code outputs stream-json on stderr, not stdout | Captured stdout was empty | Emit stderr as stdout events |
 | 11 | MCP proxy requests block Claude Code | Process hangs mid-conversation | ~~Auto-respond with error~~ **RESOLVED**: Desktop's session manager handles `control_request`/`control_response` over the event stream natively |
 | 12 | Event field is `"id"` not `"processId"` | Events ignored, UI stuck on "Starting up..." | Fixed event JSON tags |
@@ -456,7 +378,7 @@ Desktop passes `--disallowedTools` containing tools that the VM runtime handles:
 `AskUserQuestion`, `mcp__cowork__allow_cowork_file_delete`, `mcp__cowork__present_files`,
 `mcp__cowork__launch_code_session`, `mcp__cowork__create_artifact`, `mcp__cowork__update_artifact`.
 
-On native Linux there is no VM runtime, so we strip the entire flag — all tools are available to the CLI directly.
+On native Linux there is no VM runtime, so we strip the entire flag - all tools are available to the CLI directly.
 
 **2. Inject `--brief` flag (conditional)**
 
@@ -464,7 +386,7 @@ Desktop passes `CLAUDE_CODE_BRIEF=1` in the environment for Ditto/dispatch agent
 
 **3. Intercept `present_files` locally**
 
-Desktop's built-in `present_files` MCP handler validates file paths against VM-style mounts and rejects native Linux paths ("not accessible on user's computer"). The backend intercepts `present_files` control_requests in `streamOutput`, verifies the files exist on disk, and returns a synthetic success response directly to the CLI's stdin — bypassing Desktop entirely.
+Desktop's built-in `present_files` MCP handler validates file paths against VM-style mounts and rejects native Linux paths ("not accessible on user's computer"). The backend intercepts `present_files` control_requests in `streamOutput`, verifies the files exist on disk, and returns a synthetic success response directly to the CLI's stdin - bypassing Desktop entirely.
 
 The response includes a hint for the model to use `SendUserMessage` with `attachments` for phone delivery, since `present_files` UI cards only appear in the Desktop app.
 
@@ -474,7 +396,7 @@ The backend builds reverse mount remappings (real host path → VM-style `/sessi
 
 ### SendUserMessage tool reference
 
-The key tool for dispatch — how the model sends responses to the phone.
+The key tool for dispatch - how the model sends responses to the phone.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -482,7 +404,7 @@ The key tool for dispatch — how the model sends responses to the phone.
 | `attachments` | array | No | File paths (absolute or cwd-relative) for images, diffs, logs |
 | `status` | string | No | `"normal"` (replying to user) or `"proactive"` (agent-initiated) |
 
-**Note:** `mcp__dispatch__send_message` is a *different* tool — it sends messages between sessions (inter-agent), not to the user's phone. See [SEND_USER_MESSAGE_STATUS.md](https://github.com/patrickjaja/claude-desktop-bin/blob/master/SEND_USER_MESSAGE_STATUS.md) in claude-desktop-bin for the full investigation.
+**Note:** `mcp__dispatch__send_message` is a *different* tool - it sends messages between sessions (inter-agent), not to the user's phone. See [SEND_USER_MESSAGE_STATUS.md](https://github.com/patrickjaja/claude-desktop-bin/blob/master/SEND_USER_MESSAGE_STATUS.md) in claude-desktop-bin for the full investigation.
 
 ### Debugging dispatch
 
@@ -501,16 +423,91 @@ grep 'present_files handled' /tmp/cowork-debug.log
 grep 'stripping --disallowedTools' /tmp/cowork-debug.log
 ```
 
-## VM Backend (Dormant)
+## KVM Backend (Experimental)
 
-The `vm/` directory contains a full QEMU/KVM backend implementation:
-- `vm/manager.go` — VM lifecycle (create, start, stop)
-- `vm/qemu.go` — QEMU instance with direct kernel boot, COW overlays
-- `vm/vsock.go` — AF_VSOCK communication with guest sdk-daemon
-- `vm/bundle.go` — VHDX→qcow2 conversion, zstd decompression
-- `vm/network.go` — QEMU user-mode and bridge networking
+Alongside the default native backend, the daemon includes a real QEMU/KVM backend that runs Cowork sessions inside a virtual machine - matching the sandboxed execution model used on macOS and Windows. The default remains native mode; existing users are unaffected.
 
-This code works but is not used by the native backend. It's retained for potential future sandboxed execution mode.
+### Enabling KVM mode
+
+```bash
+# Via CLI flag
+./cowork-svc-linux -backend=kvm
+
+# Via environment variable
+COWORK_VM_BACKEND=kvm ./cowork-svc-linux
+
+# With debug logging
+./cowork-svc-linux -backend=kvm -debug
+```
+
+### Configuring the systemd service
+
+To switch the running service to KVM mode (or set other environment variables), use `systemctl edit`:
+
+```bash
+systemctl --user edit claude-cowork
+```
+
+This opens an editor. Add the following to set the backend:
+
+```ini
+[Service]
+Environment=COWORK_VM_BACKEND=kvm
+```
+
+Save, then restart:
+
+```bash
+systemctl --user restart claude-cowork
+```
+
+Available environment variables:
+
+| Variable | Values | Default | Description |
+|----------|--------|---------|-------------|
+| `COWORK_VM_BACKEND` | `native`, `kvm` | `native` | Backend selection. `native` runs commands directly on the host (no VM). `kvm` runs sessions inside a QEMU/KVM virtual machine. |
+| `COWORK_LOG_FULL` | `1` | *(unset)* | Disable log line truncation (useful for debugging RPC payloads) |
+
+### Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| `qemu-system-x86_64` | QEMU system emulator |
+| `virtiofsd` | Packaged separately from QEMU on most distros (e.g. `pacman -S virtiofsd`, `apt install virtiofsd`) |
+| `/dev/kvm` | Must be readable by your user |
+| `/dev/vhost-vsock` | Load the kernel module: `modprobe vhost_vsock` |
+| Unprivileged user namespaces | The virtiofs helper re-execs itself under `unshare --user --map-root-user --mount` to share `$HOME` with the guest - no host root required |
+
+### Socket path
+
+KVM mode listens on `$XDG_RUNTIME_DIR/cowork-kvm-service.sock`, separate from the native backend's `cowork-vm-service.sock`. This means both backends can coexist on the same machine. Claude Desktop must be patched to probe the KVM socket when using this mode.
+
+### Architecture
+
+The KVM backend is implemented in the `vm/` package:
+
+| File | Role |
+|------|------|
+| `vm/backend.go` | Session lifecycle, process tracking, host-to-guest RPC |
+| `vm/bridge.go` | Length-prefixed JSON over AF_VSOCK with the guest `sdk-daemon` |
+| `vm/qemu.go` | QEMU launch, root-disk boot, VHDX-to-qcow2 caching with trailer-canary cache invalidation |
+| `vm/qmp.go` | QMP control channel for live networking and shutdown |
+| `vm/vfs.go` + `vm/helper.go` | virtiofs `$HOME` share via unprivileged user namespace helper |
+| `vm/preflight.go` | Gates startup on `/dev/kvm`, `qemu-system-x86_64`, and vhost-vsock |
+
+### Key design decisions
+
+- **Direct root-disk boot.** The guest boots directly off the converted root disk instead of a COW overlay, so session state persists across reboots.
+- **No host root required.** The virtiofs helper uses `unshare --user --map-root-user --mount` to share `$HOME` with the guest without elevated privileges.
+- **Centralized logging.** The `logx/` package provides configurable line truncation (default 160 chars) with overflow hints. Use `-log-full-lines` or `COWORK_LOG_FULL=1` to disable truncation when debugging RPC payloads.
+
+### VM bundle
+
+The KVM backend expects a Claude-Desktop-compatible VM bundle under `~/.config/Claude/vm_bundles/`. Claude Desktop downloads this bundle automatically on first launch of the Cowork tab (same provisioning flow as macOS and Windows).
+
+Startup logs are prefixed `[kvm]`; look for `sdk-daemon connected via vsock` to confirm the guest came up.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full list of KVM-related changes.
 
 ## Testing
 
@@ -581,24 +578,23 @@ Deep analysis of the upstream Windows binaries and VM bundle we reverse-engineer
 
 | Document | What it tracks |
 |----------|---------------|
-| [COWORK_RPC_PROTOCOL.md](COWORK_RPC_PROTOCOL.md) | All 18 RPC methods, event types, protocol discoveries, Linux adaptations |
+| [COWORK_RPC_PROTOCOL.md](COWORK_RPC_PROTOCOL.md) | All 22 RPC methods, event types, protocol discoveries, Linux adaptations |
 | [COWORK_SVC_BINARY.md](COWORK_SVC_BINARY.md) | `cowork-svc.exe` Go internals, handler functions, app.asar SDK versions, checksums |
-| [COWORK_VM_BUNDLE.md](COWORK_VM_BUNDLE.md) | VM rootfs contents — sdk-daemon, Node.js, Python packages, system packages, checksums |
+| [COWORK_VM_BUNDLE.md](COWORK_VM_BUNDLE.md) | VM rootfs contents - sdk-daemon, Node.js, Python packages, system packages, checksums |
 
 These are re-validated on every upstream Claude Desktop release. See [update-prompt.md](update-prompt.md) for the update workflow.
 
 ## See Also
 
-- [tweakcc](https://github.com/Piebald-AI/tweakcc) — A great CLI tool for customizing Claude Code (system prompts, themes, UI). Same patching-JS-to-make-it-yours energy. Thanks to the Piebald team for their work.
+- [tweakcc](https://github.com/Piebald-AI/tweakcc) - A great CLI tool for customizing Claude Code (system prompts, themes, UI). Same patching-JS-to-make-it-yours energy. Thanks to the Piebald team for their work.
 
 ## Legal Notice
 
 > This is an **unofficial community project** for educational and research purposes.
 > Claude Desktop's Cowork feature is proprietary software owned by **Anthropic PBC**.
 >
-> This repository contains only a reverse-engineered service daemon — not the Claude
+> This repository contains only a reverse-engineered service daemon - not the Claude
 > Desktop application itself. A valid Claude account is required to use Cowork.
 >
 > This project is not affiliated with, endorsed by, or sponsored by Anthropic.
 > "Claude" is a trademark of Anthropic PBC.
-

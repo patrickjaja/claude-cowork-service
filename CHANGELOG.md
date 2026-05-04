@@ -4,6 +4,34 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+## 1.0.52 — 2026-05-01
+
+### Added
+- **KVM backend** (`-backend=kvm`) — new QEMU/KVM-based guest runtime that replaces the old dormant VM implementation. Selectable via the `-backend` flag or the `COWORK_VM_BACKEND` environment variable. Listens on a dedicated socket (`cowork-kvm-service.sock`) so native and KVM daemons can coexist in the same `$XDG_RUNTIME_DIR`. Native remains the default. Contributed by [@mosi0815](https://github.com/mosi0815) ([#26](https://github.com/patrickjaja/claude-cowork-service/pull/26)).
+  - `vm/backend.go` — session lifecycle, bundle preparation, memory/CPU configuration, process management
+  - `vm/bridge.go` — vsock host↔guest JSON message bridge
+  - `vm/qemu.go` — QEMU launch spec, root-disk boot (no more throwaway overlay), virtiofs `$HOME` share
+  - `vm/qmp.go` — QMP control channel for live networking and shutdown
+  - `vm/vfs.go` + `vm/helper.go` — VFS helper runs inside `unshare --user --map-root-user --mount` (invoked via `--vfs-helper` re-exec) to set up mounts without root on the host
+  - `vm/preflight.go` — `CheckKvmPrerequisites()` gates startup on `/dev/kvm`, `qemu-system-x86_64`, and vhost-vsock
+- **VHDX → qcow2 conversion caching** — root disk is converted once and reused across reboots. Base-image updates are detected via a trailer canary instead of a full SHA-256 scan, eliminating multi-second startup hashing. Contributed by [@mosi0815](https://github.com/mosi0815).
+- **Shared session disk** — session state persists across all sessions of a given host instead of a per-host disk, matching upstream behavior. Contributed by [@mosi0815](https://github.com/mosi0815).
+- **Log line truncation** — new `logx` package centralizes log output. Long JSON payloads (RPC params, `EVENT → client`, guest messages, `writeStdin` bodies, MCP-PROXY frames) are now truncated to 160 characters by default with a `…(+N more)` suffix showing how many characters were dropped. Previously these lines ran for thousands of characters or were truncated inconsistently at 200/300/500/2000/5000 characters by two near-duplicate helpers. Contributed by [@mosi0815](https://github.com/mosi0815).
+- **`-log-full-lines` flag** — disables truncation globally for the session when you actually need the full payload. Also accepts `COWORK_LOG_FULL=1` environment variable as a fallback.
+- **`-log-max-len` flag** — override the default 160-character budget.
+
+### Changed
+- **Upstream update to Claude Desktop v1.5354.0** (from v1.4758.0)
+- **cowork-svc.exe**: Clean rebuild, same size (12,655,440 bytes), same Go version (go1.24.13). New SHA256 `026c6d2c163498e840b649049cbe3ce3fe451d9cac4dc1bf5077736b551f8cca`. Build date 2026-04-29, VCS revision `9a9e3d5a4a368f0f49a80dc303b0ed1a18bfedad`. No new RPC handler functions — identical handler set.
+- **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums (stable since v1.1.9669)
+- **app.asar**: SDK 0.2.119 → 0.2.121, TypeScript native-preview `7.0.0-dev.20260324.1` → `7.0.0-dev.20260414.1`. Electron 41.3.0 unchanged. New dependency `@ant/rfb-client` (Remote Framebuffer client). New `node-pty` module for PTY-based process spawning.
+- **New Desktop-side features** (no pipe protocol impact): `FramebufferPreview` IPC (11 handlers — remote screen viewing via RFB), `Simulator` IPC (8 handlers — iOS simulator integration, macOS only), `CoworkArtifactBridge.runScheduledTask` (trigger scheduled tasks from artifacts), `CoworkMemory.resetMemories` (memory reset), `CoworkArtifacts.getArtifactThumbnail`, cloud-based memory sync system (23 new `cowork_memory_sync_*` telemetry events), `cowork_browser_cu_always_load` feature gate
+- **Removed Desktop-side features** (no pipe protocol impact): `Custom3pSetup.copyManagedReport`, `Custom3pSetup.probeBootstrapUrl`, `bootstrapAuth` store (3 handlers), `triggerBootstrapAuth`
+- **IPC UUID changed**: `305f54c0-...` → `c0eed8c9-...` (no protocol impact)
+- **No new RPC methods** — all 22 methods, 8 event types, spawn parameters, and wire format are identical
+- **No Go code changes needed**
+- **Updated reference docs** — `COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md` updated to v1.5354.0
+
 ## 1.0.51 — 2026-04-25
 
 ### Changed
@@ -25,39 +53,6 @@ All notable changes to claude-cowork-service will be documented in this file.
 - **`userDataName` field in `configureParams` struct** (`pipe/handlers.go`) — accepts the new parameter from Desktop v1.4758.0
 - **`sessionOnly` field in `configureParams` struct** (`pipe/handlers.go`) — accepts fire-and-forget on-connect configure calls
 - **`userDataName` field in `vmNameParams` struct** (`pipe/handlers.go`) — accepts the new parameter in subscribeEvents
-
-### Added
-- **`packaging/arch/build-pkg.sh`** — local pacman package builder. Mirrors the existing `build-deb.sh` / `build-rpm.sh` interface (`[--install] <binary> <version> [arch]`), generates a temporary PKGBUILD that wraps the prebuilt binary + systemd unit + install hook, runs `makepkg`, and drops a `claude-cowork-service-<ver>-1-<arch>.pkg.tar.zst` in the current directory. Pass `--install` to also `sudo pacman -U` the result.
-- **KVM backend** (`-backend=kvm`) — new QEMU/KVM-based guest runtime that replaces the old dormant VM implementation. Selectable via the `-backend` flag or the `COWORK_VM_BACKEND` environment variable. Listens on a dedicated socket (`cowork-kvm-service.sock`) so native and KVM daemons can coexist in the same `$XDG_RUNTIME_DIR`. Native remains the default.
-  - `vm/backend.go` — session lifecycle, bundle preparation, memory/CPU configuration, process management
-  - `vm/bridge.go` — vsock host↔guest JSON message bridge
-  - `vm/qemu.go` — QEMU launch spec, root-disk boot (no more throwaway overlay), virtiofs `$HOME` share
-  - `vm/qmp.go` — QMP control channel for live networking and shutdown
-  - `vm/vfs.go` + `vm/helper.go` — VFS helper runs inside `unshare --user --map-root-user --mount` (invoked via `--vfs-helper` re-exec) to set up mounts without root on the host
-  - `vm/preflight.go` — `CheckKvmPrerequisites()` gates startup on `/dev/kvm`, `qemu-system-x86_64`, and vhost-vsock
-- **VHDX → qcow2 conversion caching** — root disk is converted once and reused across reboots. Base-image updates are detected via a trailer canary instead of a full SHA-256 scan, eliminating multi-second startup hashing.
-- **Shared session disk** — session state persists across all sessions of a given host instead of a per-host disk, matching upstream behavior.
-- **Log line truncation** — new `logx` package centralizes log output. Long JSON payloads (RPC params, `EVENT → client`, guest messages, `writeStdin` bodies, MCP-PROXY frames) are now truncated to 160 characters by default with a `…(+N more)` suffix showing how many characters were dropped. Previously these lines ran for thousands of characters or were truncated inconsistently at 200/300/500/2000/5000 characters by two near-duplicate helpers.
-- **`-log-full-lines` flag** — disables truncation globally for the session when you actually need the full payload. Also accepts `COWORK_LOG_FULL=1` environment variable as a fallback.
-- **`-log-max-len` flag** — override the default 160-character budget.
-
-### Changed
-- **Default socket path depends on backend** — native keeps the historical `cowork-vm-service.sock` for Desktop compatibility; KVM uses `cowork-kvm-service.sock` so Desktop can tell the two modes apart by which socket exists.
-- **Logging call sites consolidated** — `pipe/handlers.go` (RPC dispatch, `handleWriteStdin`, `handleSpawn`, `handleSubscribeEvents`), `vm/bridge.go`, `vm/backend.go`, and `native/process.go` now route through `logx.Debug` / `logx.Info`, removing scattered `if h.debug { log.Printf(...) }` wrappers. The `setDebugLogging` RPC still toggles debug output at runtime.
-- **Retired duplicate truncation helpers** — `vm/bridge.go#truncate` and `native/process.go#truncateLine` are gone; all call sites use `logx.Trunc`.
-- **MCP-PROXY detection logs are now gated** — `[native] >>>MCP-PROXY>>>`, `<<<MCP-PROXY<<<`, and `<<<MCP-INIT<<<` lines emit only under `-debug`, matching the documented "quiet by default" behavior.
-
-### Removed
-- **Legacy VM implementation** — `vm/manager.go`, `vm/network.go`, `vm/vsock.go`, and `process/spawn.go` deleted. The new `vm/backend.go` + `vm/bridge.go` pair subsumes their roles (lifecycle, networking, vsock, process tracking) with a cleaner architecture built around QEMU/KVM and QMP.
-- **Root overlay boot mode** — the guest now boots directly off the converted root disk, so filesystem changes persist across reboots instead of being thrown away on every startup.
-
-### Fixed
-- **KVM exit event key mismatch** (`vm/bridge.go`) — the guest emits exit events as `{"type":"event","event":"exit","params":{"code":N,...}}`, but the native backend's `process.ExitEvent` uses `"exitCode"`. The bridge was forwarding the guest's `"code"` verbatim, so KVM-mode clients saw a different field name than native-mode clients. Both the nested-event form and the direct-event form now rename `code` → `exitCode` before emit.
-- **`KvmBackend.allocateCID` race** (`vm/backend.go`) — the read-modify-write of `$baseDir/.next_cid` is now serialized with `syscall.Flock(LOCK_EX)` on the counter file. Without the lock, two concurrent daemons (daemon restart race, native↔kvm backend flip, user instance vs. systemd unit) — or two concurrent `StartVM` calls in the same process — could both read the same N and launch QEMU with duplicate `vhost-vsock-pci,guest-cid=N`. The kernel rejects the duplicate vsock binding, which surfaced as the generic `"QEMU exited immediately (check disk image or KVM access)"` error and pointed operators at disk/KVM instead of the real cause.
-- **`KvmBackend.StartVM` TOCTOU on `b.started`** (`vm/backend.go`) — the initial `started` check now also sets a `b.starting` sentinel under `b.mu`, cleared via `defer`, so two concurrent `StartVM` calls can no longer both pass the gate and each run the full boot pipeline. Previously the second commit at the end of `StartVM` would overwrite `b.qemu` / `b.qmp` / `b.helper` / `b.bridge` / `b.watchdogStop`, orphaning a full QEMU + virtiofsd pair that `StopVM` could not reach.
-- **`killStalePID` process identity check** (`vm/qemu.go`) — before SIGTERM/SIGKILL, confirm the PID's `/proc/<pid>/exe` points at a `qemu-system-*` binary. After a daemon crash (OOM, SIGKILL, power loss) that leaves `qemu.pid` on disk, PID reuse by any same-UID process (editor, compiler, browser tab) meant the next `StartVM` would silently signal-kill that unrelated workload. The `proc.Signal(0)` check only filtered by UID, not identity.
-- **QMP connection leak on bridge-listen failure** (`vm/backend.go`) — the `bridge.Listen` error path now calls `qmp.Close()` (nil-guarded) in addition to `qemu.Shutdown(qmp)`. `Shutdown` only sends `system_powerdown` / `quit` over the QMP socket; it never closed the client FD. Because `StartVM` was returning an error, the caller never invoked `StopVM`, so the QMP Unix-socket FD was stranded for the life of the daemon until GC happened to finalize the unreachable `QmpClient`.
-- **Subscriber slice unbounded growth** (`vm/backend.go`, `native/backend.go`) — `SubscribeEvents` now stores callbacks in a `map[uint64]func(event interface{})` keyed by a monotonic ID; cancel uses `delete`. The old `[]func` + `slot = nil` on cancel left a permanent tombstone per Desktop reconnect (suspend/wake, socket drop, Desktop restart), so `emit` paid an O(historical-reconnects) scan on every event — noticeable on busy builds emitting hundreds of stdout/stderr events per second.
 
 ## 1.0.50 — 2026-04-22
 
@@ -81,6 +76,10 @@ All notable changes to claude-cowork-service will be documented in this file.
 ### Changed (prior releases in this cycle)
 - **Prior upstream update to Claude Desktop v1.3561.0** (from v1.3109.0)
 - **cowork-svc.exe**: Minor rebuild (+6,656 bytes, 12,648,272 → 12,654,928 bytes), same Go version (go1.24.13). Build date 2026-04-20, VCS revision `fbc74be3fdc714a2c46ef1fb84f71d4e4c062930`. No new RPC handler functions; certificate date rotation in embedded TLS certs.
+- **Default socket path depends on backend** — native keeps the historical `cowork-vm-service.sock` for Desktop compatibility; KVM uses `cowork-kvm-service.sock` so Desktop can tell the two modes apart by which socket exists.
+- **Logging call sites consolidated** — `pipe/handlers.go` (RPC dispatch, `handleWriteStdin`, `handleSpawn`, `handleSubscribeEvents`), `vm/bridge.go`, `vm/backend.go`, and `native/process.go` now route through `logx.Debug` / `logx.Info`, removing scattered `if h.debug { log.Printf(...) }` wrappers. The `setDebugLogging` RPC still toggles debug output at runtime.
+- **Retired duplicate truncation helpers** — `vm/bridge.go#truncate` and `native/process.go#truncateLine` are gone; all call sites use `logx.Trunc`.
+- **MCP-PROXY detection logs are now gated** — `[native] >>>MCP-PROXY>>>`, `<<<MCP-PROXY<<<`, and `<<<MCP-INIT<<<` lines emit only under `-debug`, matching the documented "quiet by default" behavior.
 - **VM bundle**: Unchanged — same SHA (`5680b11b...`), same file checksums
 - **app.asar**: Updated, all changes are minifier symbol renames. All 22 RPC methods still referenced; session dispatch logic unchanged.
 - **claude-agent-sdk**: 0.2.92 → 0.2.111; MCP protocol version 2.1.111. Electron 41.2.0 unchanged.
@@ -102,6 +101,10 @@ All notable changes to claude-cowork-service will be documented in this file.
   - **`setup-cowork` skill** — new built-in skill command driven by feature flag `skillPrompt`
   - IPC UUID changed (`f189fbc9...` → `08aa66e6-e7d3-4eb8-95ac-7e3f613ce196`) — rebuild artifact, no protocol impact
 - **Prior upstream update to Claude Desktop v1.2773.0** (from v1.2581.0, commit `c17612d`): minor cowork-svc.exe rebuild (+512 bytes), SDK rolled back to 0.2.92, Desktop-side `[cowork-deletion]` event logging, `dispatchOnCliOpAlwaysAllowed`, `coworkWebSearchEnabled` gate removed.
+
+### Removed
+- **Legacy VM implementation** — `vm/manager.go`, `vm/network.go`, `vm/vsock.go`, and `process/spawn.go` deleted. The new `vm/backend.go` + `vm/bridge.go` pair subsumes their roles (lifecycle, networking, vsock, process tracking) with a cleaner architecture built around QEMU/KVM and QMP.
+- **Root overlay boot mode** — the guest now boots directly off the converted root disk, so filesystem changes persist across reboots instead of being thrown away on every startup.
 
 ## 1.0.49 — 2026-04-14
 
