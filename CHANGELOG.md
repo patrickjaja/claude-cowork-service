@@ -25,6 +25,8 @@ All notable changes to claude-cowork-service will be documented in this file.
 - **Helper accepted a stale virtiofsd socket as "ready"** (`vm/helper.go`) — `os.Stat` returned true the moment the socket inode existed on disk, which on a crashed-helper restart could be a leftover from the previous run before `virtiofsd` had bound to it. The helper now removes any pre-existing socket path before spawning virtiofsd and waits for `/proc/net/unix` to actually list the path before emitting `ready`, with the readiness loop also exiting on virtiofsd termination.
 - **Process map leaked entries after exit** (`vm/backend.go`) — `emit` now deletes the matching entry from `b.processes` when forwarding an exit event (covering both `process.ExitEvent` and the wire-format `{type:"exit", id:...}` shape), so long-lived sessions no longer accumulate ghost process IDs.
 
+All changes in this section contributed by [@mosi0815](https://github.com/mosi0815) ([#33](https://github.com/patrickjaja/claude-cowork-service/pull/33)).
+
 ## 1.0.52 — 2026-05-01
 
 ### Added
