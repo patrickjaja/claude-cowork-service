@@ -4,6 +4,8 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+## 1.0.53 — 2026-05-05
+
 ### Added
 - **`packaging/arch/build-pkg.sh`** — local pacman package builder. Mirrors the existing `build-deb.sh` / `build-rpm.sh` interface (`[--install] <binary> <version> [arch]`), generates a temporary PKGBUILD that wraps the prebuilt binary + systemd unit + install hook, runs `makepkg`, and drops a `claude-cowork-service-<ver>-1-<arch>.pkg.tar.zst` in the current directory. Pass `--install` to also `sudo pacman -U` the result.
 - **`memoryGB` parameter on `StartVM`** — backend interface is now `StartVM(name, bundlePath, memoryGB)`. KVM honours the per-call override and falls back to the value from `Configure(memoryMB,...)` when the caller passes `0`; native ignores it.
