@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/patrickjaja/claude-cowork-service/native"
@@ -256,6 +257,61 @@ linux:
 	}
 	if !containsBind(config.Linux.BindMounts, workspace, "/sessions/test-session/mnt/workspace", "rw") {
 		t.Fatalf("spawn bind mount missing: %#v", config.Linux.BindMounts)
+	}
+}
+
+func TestSandboxBaseConfigPropagatesAllowAllUnixSockets(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "sandbox.yaml")
+	t.Setenv(sandboxConfigEnv, configPath)
+	if err := os.WriteFile(configPath, []byte(`
+network:
+  allowedDomains: []
+  deniedDomains: []
+  allowAllUnixSockets: true
+filesystem:
+  denyRead: []
+  allowRead: []
+  allowWrite: []
+  denyWrite: []
+linux:
+  bindMounts: []
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	base, err := loadSandboxBaseConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !base.Network.AllowAllUnixSockets {
+		t.Fatalf("base config did not load allowAllUnixSockets")
+	}
+
+	config := buildSRTConfig(native.SpawnContext{
+		RealSessionDir: t.TempDir(),
+		SessionPrefix:  "/sessions/test-session",
+	}, "/sessions/test-session", nil, "/usr/bin/bash", base)
+	if !config.Network.AllowAllUnixSockets {
+		t.Fatalf("buildSRTConfig dropped allowAllUnixSockets: %#v", config.Network)
+	}
+}
+
+func TestSandboxDefaultConfigOmitsAllowAllUnixSockets(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "sandbox.yaml")
+	t.Setenv(sandboxConfigEnv, configPath)
+	base, err := loadSandboxBaseConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base.Network.AllowAllUnixSockets {
+		t.Fatalf("default config must keep allowAllUnixSockets disabled")
+	}
+	yamlBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(yamlBytes), "allowAllUnixSockets: false") {
+		t.Fatalf("default config YAML missing explicit allowAllUnixSockets line:\n%s", yamlBytes)
 	}
 }
 

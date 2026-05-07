@@ -134,8 +134,9 @@ type srtConfig struct {
 }
 
 type networkConfig struct {
-	AllowedDomains []string `json:"allowedDomains" yaml:"allowedDomains"`
-	DeniedDomains  []string `json:"deniedDomains" yaml:"deniedDomains"`
+	AllowedDomains      []string `json:"allowedDomains" yaml:"allowedDomains"`
+	DeniedDomains       []string `json:"deniedDomains" yaml:"deniedDomains"`
+	AllowAllUnixSockets bool     `json:"allowAllUnixSockets,omitempty" yaml:"allowAllUnixSockets"`
 }
 
 type filesystemConfig struct {

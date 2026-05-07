@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -277,7 +276,6 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 	// Look up process for reverse path mapping
 	pt.mu.RLock()
-	lp := pt.processes[id]
 	pt.mu.RUnlock()
 
 	scanner := bufio.NewScanner(r)
@@ -307,24 +305,24 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 		// Remap real paths → VM paths in output (only when /sessions/ is accessible).
 		// Without this guard, native Linux (no root) would produce /sessions/ paths
 		// that don't exist, causing the model's subsequent bash commands to fail.
-		if lp != nil && lp.reverseMap {
-			// Mount-level first (more specific): real mount target → VM mount path
-			for _, rm := range lp.reverseMountRemap {
-				line = string(bytes.ReplaceAll([]byte(line), rm.from, rm.to))
-			}
-			// Session-level: real session prefix → VM session prefix
-			line = string(bytes.ReplaceAll([]byte(line), lp.realPrefix, lp.vmPrefix))
-		}
+		//if lp != nil && lp.reverseMap {
+		//	// Mount-level first (more specific): real mount target → VM mount path
+		//	for _, rm := range lp.reverseMountRemap {
+		//		line = string(bytes.ReplaceAll([]byte(line), rm.from, rm.to))
+		//	}
+		//	// Session-level: real session prefix → VM session prefix
+		//	line = string(bytes.ReplaceAll([]byte(line), lp.realPrefix, lp.vmPrefix))
+		//}
 
 		// Intercept present_files MCP calls and handle locally on native Linux.
 		// Desktop's present_files validates paths against VM mounts, which fails
 		// for native Linux paths. Since there's no VM boundary, we just verify
 		// the files exist and return success directly to the CLI.
-		if lp != nil && (strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`)) {
-			if handled := pt.tryHandlePresentFiles(lp, line); handled {
-				continue // don't forward to Desktop
-			}
-		}
+		//if lp != nil && (strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`)) {
+		//	if handled := pt.tryHandlePresentFiles(lp, line); handled {
+		//		continue // don't forward to Desktop
+		//	}
+		//}
 
 		// Detect MCP control_request messages from the CLI.
 		if pt.debug && (strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`)) {
@@ -611,16 +609,16 @@ func (pt *processTracker) writeStdin(processID string, data []byte) error {
 	}
 
 	// Remap VM paths to real paths in stdin data
-	if lp.vmPrefix != nil {
-		data = bytes.ReplaceAll(data, lp.vmPrefix, lp.realPrefix)
-	}
+	//if lp.vmPrefix != nil {
+	//	data = bytes.ReplaceAll(data, lp.vmPrefix, lp.realPrefix)
+	//}
 
 	// Remap session/mnt/<mount> paths to real mount targets.
 	// Glob doesn't follow directory symlinks, so the model must see
 	// the real target paths instead of symlinked mnt/ paths.
-	for _, rm := range lp.mountRemap {
-		data = bytes.ReplaceAll(data, rm.from, rm.to)
-	}
+	//for _, rm := range lp.mountRemap {
+	//	data = bytes.ReplaceAll(data, rm.from, rm.to)
+	//}
 
 	// Detect MCP control_response messages from Claude Desktop.
 	// These are JSON objects with "type":"control_response" sent by Desktop's
@@ -640,15 +638,15 @@ func (pt *processTracker) writeStdin(processID string, data []byte) error {
 	// just "/pdf ..." (bare skill name). The plugin prefix in the UI
 	// (from marketplace.json) doesn't match the CLI's plugin.json name,
 	// so we strip it to let the CLI resolve by userFacingName().
-	if bytes.Contains(data, []byte(`"content":"/`)) {
-		re := regexp.MustCompile(`"content":"/[a-zA-Z0-9_-]+:`)
-		if re.Match(data) {
-			if pt.debug {
-				log.Printf("[native] stripping skill plugin prefix from user message")
-			}
-			data = re.ReplaceAll(data, []byte(`"content":"/`))
-		}
-	}
+	//if bytes.Contains(data, []byte(`"content":"/`)) {
+	//	re := regexp.MustCompile(`"content":"/[a-zA-Z0-9_-]+:`)
+	//	if re.Match(data) {
+	//		if pt.debug {
+	//			log.Printf("[native] stripping skill plugin prefix from user message")
+	//		}
+	//		data = re.ReplaceAll(data, []byte(`"content":"/`))
+	//	}
+	//}
 
 	// Check if process already exited
 	select {

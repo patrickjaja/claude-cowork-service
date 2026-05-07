@@ -69,14 +69,17 @@ func defaultSandboxConfigYAML(config srtConfig) string {
 	return "# claude-cowork-service sandbox defaults\n" +
 		"# Edit this file to extend or relax the baseline applied before per-spawn mounts and domains.\n" +
 		"# /tmp and /var/tmp are denied as host reads so bubblewrap provides private writable tmpfs mounts there.\n" +
+		"# Set network.allowAllUnixSockets: true to let sandboxed processes connect to host Unix sockets\n" +
+		"# (Docker, ssh-agent, etc.). On Linux SRT cannot filter sockets by path, so this is all-or-nothing.\n" +
 		string(data)
 }
 
 func defaultSandboxBaseConfig() srtConfig {
 	return srtConfig{
 		Network: networkConfig{
-			AllowedDomains: []string{},
-			DeniedDomains:  []string{},
+			AllowedDomains:      []string{},
+			DeniedDomains:       []string{},
+			AllowAllUnixSockets: false,
 		},
 		Filesystem: filesystemConfig{
 			DenyRead:   defaultSandboxDenyRead(),
