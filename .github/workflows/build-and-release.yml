@@ -104,12 +104,17 @@ jobs:
         run: |
           # Build using local source instead of fetchFromGitHub.
           # The flake's package.nix uses fetchFromGitHub for end users;
-          # in CI we override src to the flake's own git-tracked source tree.
+          # in CI we override src to the flake's own git-tracked source tree
+          # and pass the generated SRT binaries as an explicit source input.
           nix build --no-link --print-build-logs --impure --expr '
-            let flake = builtins.getFlake (toString ./.);
-            in flake.packages.x86_64-linux.claude-cowork-service.overrideAttrs {
-              src = flake.outPath;
-            }
+            let
+              flake = builtins.getFlake (toString ./.);
+              localPkg = (flake.packages.x86_64-linux.claude-cowork-service.override {
+                srtBinaries = ./srt;
+              }).overrideAttrs {
+                src = flake.outPath;
+              };
+            in localPkg
           '
       - name: Test NixOS module evaluation
         run: |
@@ -119,7 +124,9 @@ jobs:
             let
               flake = builtins.getFlake (toString ./.);
               pkgs = flake.inputs.nixpkgs.legacyPackages.x86_64-linux;
-              localPkg = flake.packages.x86_64-linux.claude-cowork-service.overrideAttrs {
+              localPkg = (flake.packages.x86_64-linux.claude-cowork-service.override {
+                srtBinaries = ./srt;
+              }).overrideAttrs {
                 src = flake.outPath;
               };
             in pkgs.callPackage ./packaging/nix/module-test.nix {
@@ -466,15 +473,19 @@ jobs:
       - name: Install Nix (for hash computation)
         uses: cachix/install-nix-action@v27
 
-      - name: Update Nix package hash
+      - name: Update Nix package hashes
         run: |
           VER="${RELEASE_VERSION#v}"
           URL="https://github.com/${{ github.repository }}/archive/${RELEASE_VERSION}.tar.gz"
           NAR_HASH=$(nix-prefetch-url --unpack --type sha256 "$URL" 2>/dev/null)
           NIX_HASH=$(nix hash to-sri --type sha256 "$NAR_HASH")
+          SRT_AMD64_HASH=$(nix hash file --type sha256 --sri srt/srt-linux-amd64)
+          SRT_ARM64_HASH=$(nix hash file --type sha256 --sri srt/srt-linux-arm64)
 
-          sed -i -E "s|version = \"[^\"]+\"|version = \"$VER\"|" packaging/nix/package.nix
+          sed -i -E "s|packageVersion = \"[^\"]+\"|packageVersion = \"$VER\"|" packaging/nix/package.nix
           sed -i -E "s|hash = \"sha256-[^\"]+\"|hash = \"$NIX_HASH\"|" packaging/nix/package.nix
+          sed -i -E "s|x86_64-linux = \"sha256-[^\"]+\"|x86_64-linux = \"$SRT_AMD64_HASH\"|" packaging/nix/package.nix
+          sed -i -E "s|aarch64-linux = \"sha256-[^\"]+\"|aarch64-linux = \"$SRT_ARM64_HASH\"|" packaging/nix/package.nix
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
