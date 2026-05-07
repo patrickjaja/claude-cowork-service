@@ -42,7 +42,7 @@ buildGoModule rec {
 
   postInstall = ''
     mv $out/bin/${pname} $out/bin/cowork-svc-linux
-    install -Dm755 $src/srt/${srtBinary} $out/bin/srt
+    install -Dm755 $src/srt/${srtBinary} $out/bin/srt-cowork
     wrapProgram $out/bin/cowork-svc-linux \
       --prefix PATH : "$out/bin:${runtimePath}"
 

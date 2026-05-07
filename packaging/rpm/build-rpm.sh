@@ -49,7 +49,7 @@ echo "=== Building claude-cowork-service RPM ==="
 
 # Copy binary and service file to SOURCES
 cp "$BINARY" "$RPM_BUILD/SOURCES/cowork-svc-linux"
-cp "$SRT_BINARY" "$RPM_BUILD/SOURCES/srt"
+cp "$SRT_BINARY" "$RPM_BUILD/SOURCES/srt-cowork"
 cp "$REPO_ROOT/claude-cowork.service" "$RPM_BUILD/SOURCES/"
 
 # Copy spec file

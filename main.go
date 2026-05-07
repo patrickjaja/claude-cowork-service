@@ -130,5 +130,5 @@ func defaultSandboxSRT() string {
 	if v := os.Getenv("COWORK_SANDBOX_SRT"); v != "" {
 		return v
 	}
-	return "srt"
+	return "srt-cowork"
 }

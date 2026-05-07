@@ -281,7 +281,7 @@ jobs:
               dnf install -y /dist/test.rpm
               cowork-svc-linux -version
               test -f /usr/lib/systemd/user/claude-cowork.service
-              test -x /usr/bin/srt
+              test -x /usr/bin/srt-cowork
               echo 'RPM x86_64 test passed'
             "
 
@@ -295,7 +295,7 @@ jobs:
               dnf install -y /dist/test.rpm
               cowork-svc-linux -version
               test -f /usr/lib/systemd/user/claude-cowork.service
-              test -x /usr/bin/srt
+              test -x /usr/bin/srt-cowork
               echo 'RPM aarch64 test passed'
             "
 
@@ -310,7 +310,7 @@ jobs:
               apt-get install -y /dist/claude-cowork-service_*_arm64.deb
               cowork-svc-linux -version
               test -f /usr/lib/systemd/user/claude-cowork.service
-              test -x /usr/bin/srt
+              test -x /usr/bin/srt-cowork
               echo 'DEB arm64 test passed'
             "
 

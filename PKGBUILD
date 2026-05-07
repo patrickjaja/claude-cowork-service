@@ -37,7 +37,7 @@ package() {
         *) echo "Unsupported architecture for srt: ${CARCH}" >&2; return 1 ;;
     esac
     install -Dm755 "srt/srt-linux-${_srt_arch}" \
-        "${pkgdir}/usr/bin/srt"
+        "${pkgdir}/usr/bin/srt-cowork"
 
     install -Dm644 claude-cowork.service \
         "${pkgdir}/usr/lib/systemd/user/claude-cowork.service"

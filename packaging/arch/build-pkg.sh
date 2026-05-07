@@ -68,7 +68,7 @@ echo "=== Building claude-cowork-service pacman package ==="
 
 # Stage source files alongside PKGBUILD so makepkg can pick them up via local source=()
 cp "$BINARY"                              "$WORK_DIR/cowork-svc-linux"
-cp "$SRT_BINARY"                          "$WORK_DIR/srt"
+cp "$SRT_BINARY"                          "$WORK_DIR/srt-cowork"
 cp "$REPO_ROOT/claude-cowork.service"     "$WORK_DIR/claude-cowork.service"
 cp "$REPO_ROOT/LICENSE"                   "$WORK_DIR/LICENSE"
 cp "$REPO_ROOT/claude-cowork-service.install" "$WORK_DIR/claude-cowork-service.install"
@@ -89,7 +89,7 @@ optdepends=('claude-desktop-bin: Unofficial Linux frontend for Claude Desktop Co
 install="claude-cowork-service.install"
 
 source=('cowork-svc-linux'
-        'srt'
+        'srt-cowork'
         'claude-cowork.service'
         'LICENSE'
         'claude-cowork-service.install')
@@ -97,7 +97,7 @@ sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     install -Dm755 "\$srcdir/cowork-svc-linux"          "\$pkgdir/usr/bin/cowork-svc-linux"
-    install -Dm755 "\$srcdir/srt"                       "\$pkgdir/usr/bin/srt"
+    install -Dm755 "\$srcdir/srt-cowork"                "\$pkgdir/usr/bin/srt-cowork"
     install -Dm644 "\$srcdir/claude-cowork.service"     "\$pkgdir/usr/lib/systemd/user/claude-cowork.service"
     install -Dm644 "\$srcdir/LICENSE"                   "\$pkgdir/usr/share/licenses/\$pkgname/LICENSE"
 }

@@ -39,12 +39,12 @@ install: build
 	install -Dm755 $(BINARY) $(DESTDIR)$(PREFIX)/bin/$(BINARY)
 	test -n "$(SRT_ARCH)" || { echo "Unsupported architecture for srt: $(UNAME_M)" >&2; exit 1; }
 	test -f "$(SRT_BINARY)" || { echo "Missing $(SRT_BINARY); run: make build-srt" >&2; exit 1; }
-	install -Dm755 "$(SRT_BINARY)" $(DESTDIR)$(PREFIX)/bin/srt
+	install -Dm755 "$(SRT_BINARY)" $(DESTDIR)$(PREFIX)/bin/srt-cowork
 	install -Dm644 claude-cowork.service $(DESTDIR)$(PREFIX)/lib/systemd/user/claude-cowork.service
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(BINARY)
-	rm -f $(DESTDIR)$(PREFIX)/bin/srt
+	rm -f $(DESTDIR)$(PREFIX)/bin/srt-cowork
 	rm -f $(DESTDIR)$(PREFIX)/lib/systemd/user/claude-cowork.service
 
 lint:

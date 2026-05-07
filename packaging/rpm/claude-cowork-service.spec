@@ -27,7 +27,7 @@ rm -rf %{buildroot}
 # Install binary
 mkdir -p %{buildroot}/usr/bin
 install -m755 %{_sourcedir}/cowork-svc-linux %{buildroot}/usr/bin/cowork-svc-linux
-install -m755 %{_sourcedir}/srt %{buildroot}/usr/bin/srt
+install -m755 %{_sourcedir}/srt-cowork %{buildroot}/usr/bin/srt-cowork
 
 # Install systemd user service
 mkdir -p %{buildroot}/usr/lib/systemd/user
@@ -44,5 +44,5 @@ echo ""
 
 %files
 /usr/bin/cowork-svc-linux
-/usr/bin/srt
+/usr/bin/srt-cowork
 /usr/lib/systemd/user/claude-cowork.service

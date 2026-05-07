@@ -49,7 +49,7 @@ mkdir -p "$BUILD_DIR/usr/lib/systemd/user"
 
 # Install binary
 install -m755 "$BINARY" "$BUILD_DIR/usr/bin/cowork-svc-linux"
-install -m755 "$SRT_BINARY" "$BUILD_DIR/usr/bin/srt"
+install -m755 "$SRT_BINARY" "$BUILD_DIR/usr/bin/srt-cowork"
 
 # Install systemd service
 install -m644 "$REPO_ROOT/claude-cowork.service" "$BUILD_DIR/usr/lib/systemd/user/claude-cowork.service"

@@ -28,7 +28,7 @@ func TestShellCommandInCwd(t *testing.T) {
 
 func TestWrapCommandHandlesNilEnv(t *testing.T) {
 	t.Setenv(sandboxConfigEnv, filepath.Join(t.TempDir(), "sandbox.yaml"))
-	b := NewBackend("/usr/bin/srt", false)
+	b := NewBackend("/usr/bin/srt-cowork", false)
 	_, _, env, _, err := b.wrapCommand(native.SpawnContext{
 		RealSessionDir: t.TempDir(),
 		SessionPrefix:  "/sessions/test-session",
@@ -47,7 +47,7 @@ func TestWrapCommandHandlesNilEnv(t *testing.T) {
 
 func TestCheckPrerequisitesCreatesSandboxConfig(t *testing.T) {
 	tmp := t.TempDir()
-	srtPath := filepath.Join(tmp, "srt")
+	srtPath := filepath.Join(tmp, "srt-cowork")
 	configPath := filepath.Join(tmp, "config", "sandbox.yaml")
 	t.Setenv(sandboxConfigEnv, configPath)
 

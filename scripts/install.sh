@@ -12,7 +12,7 @@ set -euo pipefail
 
 REPO="patrickjaja/claude-cowork-service"
 BINARY_NAME="cowork-svc-linux"
-SRT_NAME="srt"
+SRT_NAME="srt-cowork"
 SERVICE_NAME="claude-cowork"
 DOWNLOAD_NAME=""  # set by arch detection below
 SRT_DOWNLOAD_NAME=""  # set by arch detection below

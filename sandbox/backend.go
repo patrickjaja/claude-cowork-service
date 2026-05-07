@@ -15,7 +15,7 @@ import (
 	"github.com/patrickjaja/claude-cowork-service/pipe"
 )
 
-const defaultSRTBinary = "srt"
+const defaultSRTBinary = "srt-cowork"
 
 // PreflightResult describes whether the sandbox backend can start here.
 type PreflightResult struct {
