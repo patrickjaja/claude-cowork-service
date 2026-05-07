@@ -1,8 +1,8 @@
-# Cowork Service Binary Analysis - v1.6259.0
+# Cowork Service Binary Analysis - v1.6608.0
 
 ## Binary Overview
 
-- **Windows (pre-v1.6259.0)**: cowork-svc.exe - Go binary (~12.6 MB), implemented Hyper-V VM management. **Removed from installer as of v1.6259.0.** The pipe protocol client code (TypeScript) still exists in the Electron app and connects to `\\.\pipe\cowork-vm-service` the same way, but the Go binary is no longer bundled. The serving side is presumably downloaded on demand or managed externally now.
+- **Windows (pre-v1.6259.0)**: cowork-svc.exe - Go binary (~12.6 MB), implemented Hyper-V VM management. **Removed from installer as of v1.6259.0** (still absent in v1.6608.0). The pipe protocol client code (TypeScript) still exists in the Electron app and connects to `\\.\pipe\cowork-vm-service` the same way, but the Go binary is no longer bundled. The serving side is presumably downloaded on demand or managed externally now.
 - **macOS**: Now uses `@ant/claude-swift` - a native Swift addon using Apple Virtualization.framework directly. The Go binary (`cowork-svc`) is no longer used; VM management bypasses Go entirely.
 - **Linux (ours)**: cowork-svc-linux - Go binary, direct host execution. Unaffected by the upstream binary removal since we never depended on cowork-svc.exe at runtime.
 
@@ -17,7 +17,7 @@ The extract script pulls all files from the installer's resource directory:
 | chrome-native-host.exe | 1 MB | Chrome native messaging host for browser tools | Present |
 | cowork-plugin-shim.sh | 7.5 KB | Plugin permission gating library (new in v1.1.9669, updated in v1.2581.0) | **REMOVED** |
 | smol-bin.x64.vhdx | 36 MB | Empty ext4 filesystem for sdk-daemon updater | **REMOVED** |
-| *.json (locale files) | ~15-75 KB each | UI translations (de-DE, en-US, es-419, etc.) | Present |
+| *.json (locale files) | ~15-75 KB each | UI translations (de-DE, en-US, es-419, id-ID, etc.) | Present (id-ID.json added in v1.6608.0) |
 | *.png / *.ico | ~2-4 KB each | Tray icons (light/dark, various DPI) | Present |
 | .version | 10 bytes | Version string ("1.6259.0") | Present |
 
@@ -274,11 +274,11 @@ As of v1.6259.0, three files have been removed from the installer. Checksums bel
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.6259.0 |
+| **Package** | @ant/desktop v1.6608.0 |
 | **Electron** | 41.3.0 |
 | **Node requirement** | >=22.0.0 |
-| **Sentry release** | dc89db3be9b2bc795e0fda0ea3738b035a76ed46 |
-| **IPC UUID** | 04bc1015-f35e-40f2-b55a-23c8655d8373 |
+| **Sentry release** | (verify on extraction) |
+| **IPC UUID** | (verify on extraction) |
 
 ### New in v1.1.9669
 
@@ -311,6 +311,25 @@ As of v1.6259.0, three files have been removed from the installer. Checksums bel
 - **Artifact lifecycle** — New telemetry events: `cowork_artifacts_created`, `cowork_artifacts_updated`, `cowork_artifacts_imported`, `cowork_artifacts_exported`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
+
+### New in v1.6608.0
+
+- **Operon/Conda notebook engine REMOVED** - The entire Operon/Conda subsystem has been removed from Claude Desktop. This is a massive internal refactoring that dropped the build size by approximately 3 MB. The `createDiskImage` RPC method, `mountConda` spawn parameter, and all conda-related code paths are gone.
+- **`createDiskImage` RPC removed** - Desktop no longer sends this method. Our no-op handler remains for backward compatibility.
+- **`mountConda` spawn parameter removed** - No longer sent by Desktop in spawn requests.
+- **`addApprovedOauthToken` simplified** - Now sends only `{token}` (the `name` field was removed).
+- **`startVM` gains optional fields** - New optional `cpuCount` (int) and `apiProbeURL` (string) parameters.
+- **`isDebugLoggingEnabled` now Desktop-local** - Desktop handles this internally and no longer sends it over the pipe.
+- **New locale: id-ID.json** - Indonesian language support added.
+- **New env vars**: `CLAUDE_CODE_DISABLE_AGENTS_FLEET`, `CLAUDE_TMPDIR` added to spawn environment.
+- **Removed env var**: `CLAUDE_OAUTH_CLIENT_SECRET` removed from spawn environment.
+- **New JS files**: `coworkArtifact.js` (new version), `buddy.js` added to build artifacts.
+- **Removed JS file**: `sqliteWorker.node.js` removed.
+- **app.asar**: Updated to v1.6608.0.
+- **VM bundle**: Unchanged - same SHA `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d`.
+- **cowork-svc.exe**: Still absent from installer (removed in v1.6259.0).
+- **smol-bin.x64.vhdx**: Still absent (removed in v1.6259.0).
+- **default.clod**: Still absent (removed in v1.3883.0).
 
 ### New in v1.6259.0
 
@@ -474,7 +493,7 @@ As of v1.6259.0, three files have been removed from the installer. Checksums bel
 
 ### Key Dependency Versions
 
-*(verified for v1.6259.0)*
+*(verified for v1.6608.0)*
 
 | Package | Version | Changed from v1.5354.0 |
 |---------|---------|------------------------|
@@ -509,7 +528,7 @@ As of v1.6259.0, three files have been removed from the installer. Checksums bel
 
 ## What to Check on Update
 
-**Note:** As of v1.6259.0, cowork-svc.exe is no longer bundled in the installer. Steps 1, 3, 5, 6, and 7 below only apply if the binary reappears in a future version or is obtained separately.
+**Note:** As of v1.6259.0 (still absent in v1.6608.0), cowork-svc.exe is no longer bundled in the installer. Steps 1, 3, 5, 6, and 7 below only apply if the binary reappears in a future version or is obtained separately.
 
 1. ~~Run `strings bin/cowork-svc.exe | grep -i "method\|spawn\|subscribe\|event"` for new RPC methods~~ - Binary no longer bundled. Check the TypeScript VM client in app.asar instead for protocol changes
 2. Check if new files appear at the same directory level (new in v1.6259.0: `fonts/`, `drizzle/sqlite/`, `ion-dist/`, `seed/`)
@@ -528,6 +547,7 @@ As of v1.6259.0, three files have been removed from the installer. Checksums bel
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.6608.0 | **REMOVED** | Operon/Conda notebook engine completely removed (~3 MB build size drop). `createDiskImage` RPC removed, `mountConda` spawn param removed, `addApprovedOauthToken` simplified (name field removed), `startVM` gains cpuCount/apiProbeURL, `isDebugLoggingEnabled` now Desktop-local. New locale: id-ID.json. New env vars: CLAUDE_CODE_DISABLE_AGENTS_FLEET, CLAUDE_TMPDIR. Removed env var: CLAUDE_OAUTH_CLIENT_SECRET. New JS: buddy.js; removed: sqliteWorker.node.js. VM bundle unchanged |
 | 1.6259.0 | **REMOVED** | cowork-svc.exe, smol-bin.x64.vhdx, and cowork-plugin-shim.sh all removed from installer. Pipe protocol unchanged (22 methods, 8 events). macOS switches to @ant/claude-swift native addon. SDK 0.2.128; new buddy.js build artifact; new installer dirs (fonts/, drizzle/sqlite/, ion-dist/, seed/); Vertex auth renamed to interactive auth; new IPC handlers |
 | 1.5354.0 | 12,655,440 bytes | Clean rebuild, same size; same Go version (go1.24.13); last version where cowork-svc.exe was bundled; SDK 0.2.121; new @ant/rfb-client dependency; node-pty module added |
 | 1.4758.0 | 12,655,440 bytes | Rebuild (same size, new SHA); new source files: variant.go, signature.go, vhdx.go, logfile_security.go; new VM methods: SetCondaDiskPath, SetSessionDiskPath, HasUnreleasedResources; client signature verification (WinVerifyTrust); VHDX sparse disk creation; persistent bidirectional RPC; plugin permission gating updated; guest-to-host protocol; log ACL hardening; idle session cleanup; Electron 41.3.0; TypeScript ~6.0.2; SDK 0.2.119; new computerUseTeach.js build artifact |

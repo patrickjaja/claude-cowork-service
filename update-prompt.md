@@ -22,7 +22,8 @@ Before any version update, ensure a clean starting point:
 >    ```
 > 2. Save old files for diffing:
 >    ```bash
->    cp bin/cowork-svc.exe /tmp/cowork-svc-old.exe
+>    # NOTE: cowork-svc.exe was removed from the installer in v1.6259.0
+>    # Save app.asar and vm-bundle config for comparison instead
 >    cp vm-bundle/vm-bundle-config.json /tmp/vm-bundle-config-old.json
 >    cp bin/app.asar /tmp/app-asar-old.asar
 >    ```
@@ -53,12 +54,14 @@ Copy-paste this into Claude Code when a new version is available:
 >    cat bin/.version vm-bundle/.version
 >    ```
 >
-> 3. Compare cowork-svc.exe (if old version was saved):
+> 3. Compare app.asar for protocol changes (primary source of truth since v1.6259.0):
 >    ```bash
->    # Size comparison
->    ls -la bin/cowork-svc.exe /tmp/cowork-svc-old.exe
->    # String differences (new RPC methods, endpoints)
->    diff <(strings /tmp/cowork-svc-old.exe | sort -u) <(strings bin/cowork-svc.exe | sort -u) | head -100
+>    # Extract old and new app.asar for comparison
+>    npx @electron/asar extract /tmp/app-asar-old.asar /tmp/app-asar-old
+>    npx @electron/asar extract bin/app.asar /tmp/app-asar-new
+>    # Check for RPC method changes in the TypeScript VM client
+>    diff <(rg -o 'method:"[^"]*"' /tmp/app-asar-old/app/.vite/build/index.js | sort -u) \
+>         <(rg -o 'method:"[^"]*"' /tmp/app-asar-new/app/.vite/build/index.js | sort -u)
 >    ```
 >
 > 4. Compare VM bundle config:
@@ -194,5 +197,5 @@ Run this on EVERY version update to verify our implementation still matches:
 | New event type | Search for event emission in JS | Add to process/events.go |
 | VM bundle SHA change | Compare vm-bundle-config.json | Note in COWORK_VM_BUNDLE.md |
 | New files in bin/ | Compare directory listings | Document in COWORK_SVC_BINARY.md |
-| cowork-svc.exe size change | Compare file sizes | May indicate new functionality |
+| app.asar changes | Extract and diff index.js | Check for new RPC methods, spawn params, event types |
 | Session type change | Search for CLAUDE_CODE_TAGS in JS | Update backend.go handling |

@@ -437,7 +437,7 @@ func (b *Backend) InstallSdk(sdkSubpath string, version string) error {
 	return nil
 }
 
-func (b *Backend) AddApprovedOauthToken(name string, token string) error {
+func (b *Backend) AddApprovedOauthToken(token string) error {
 	if b.debug {
 		log.Printf("[native] addApprovedOauthToken (no-op)")
 	}

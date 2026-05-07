@@ -44,7 +44,7 @@ func (b *recordingBackend) ReadFile(processName string, filePath string) ([]byte
 	return nil, nil
 }
 func (b *recordingBackend) InstallSdk(sdkSubpath string, version string) error { return nil }
-func (b *recordingBackend) AddApprovedOauthToken(name string, token string) error {
+func (b *recordingBackend) AddApprovedOauthToken(token string) error {
 	return nil
 }
 func (b *recordingBackend) SetDebugLogging(enabled bool) {}

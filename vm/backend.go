@@ -631,7 +631,7 @@ func (b *KvmBackend) runPendingSdkInstall() {
 	log.Printf("[kvm] installSdk ack from guest: resp=%s", logx.Trunc(string(resp)))
 }
 
-func (b *KvmBackend) AddApprovedOauthToken(name string, token string) error {
+func (b *KvmBackend) AddApprovedOauthToken(token string) error {
 	b.mu.RLock()
 	bridge := b.bridge
 	b.mu.RUnlock()
@@ -639,7 +639,7 @@ func (b *KvmBackend) AddApprovedOauthToken(name string, token string) error {
 		return nil
 	}
 	if _, err := bridge.Forward("addApprovedOauthToken",
-		map[string]interface{}{"name": name, "token": token}); err != nil {
+		map[string]interface{}{"token": token}); err != nil {
 		log.Printf("[kvm] oauth forward failed: %v", err)
 	}
 	return nil

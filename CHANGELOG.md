@@ -4,6 +4,28 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- **Upstream update to Claude Desktop v1.6608.0** (from v1.6259.0)
+- **Operon/Conda notebook engine completely removed from Desktop** - Massive internal refactoring that dropped the build size by approximately 3 MB. All conda-related code paths, the `createDiskImage` RPC method, and the `mountConda` spawn parameter are gone from the Desktop codebase.
+- **`createDiskImage` RPC removed** - Desktop no longer sends this method. Our no-op handler remains for backward compatibility.
+- **`spawn` no longer sends `mountConda` parameter** - The conda mount mode field was removed along with the Operon engine.
+- **`addApprovedOauthToken` simplified** - Desktop now sends only `{token}` (the `name` field was removed).
+- **`startVM` gains optional `cpuCount` and `apiProbeURL` fields** - New parameters for VM CPU allocation and API reachability probing. Ignored on native Linux.
+- **`isDebugLoggingEnabled` now handled locally by Desktop** - No longer sent over the pipe. Our handler remains for backward compatibility.
+- **New spawn env vars**: `CLAUDE_CODE_DISABLE_AGENTS_FLEET`, `CLAUDE_TMPDIR`
+- **Removed spawn env var**: `CLAUDE_OAUTH_CLIENT_SECRET`
+- **New locale**: id-ID.json (Indonesian) added to installer
+- **New JS files**: `coworkArtifact.js` (new version), `buddy.js` added to app.asar build artifacts
+- **Removed JS file**: `sqliteWorker.node.js` removed from app.asar
+- **VM bundle**: Unchanged - same SHA (`5680b11b...`), same file checksums (stable since v1.1.9669)
+- **cowork-svc.exe**: Still absent from installer (removed in v1.6259.0)
+- **Updated reference docs** - COWORK_RPC_PROTOCOL.md, COWORK_SVC_BINARY.md, COWORK_VM_BUNDLE.md, CLAUDE.md, update-prompt.md updated to v1.6608.0
+
+### Removed
+- **`createDiskImage` RPC method** - No longer sent by Desktop (Operon/Conda removed). Handler retained as no-op for backward compatibility.
+- **`mountConda` spawn parameter** - No longer sent by Desktop.
+- **`name` field from `addApprovedOauthToken`** - Desktop now sends only `{token}`.
+
 ## 1.0.53 — 2026-05-05
 
 ### Added
