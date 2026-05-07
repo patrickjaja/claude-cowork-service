@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# Extract all binaries from the latest Claude Desktop Windows installer
+# Extract all binaries from the latest Claude Desktop Windows MSIX package
 #
-# Downloads the installer, extracts the nupkg, and copies all files
-# from the cowork-svc.exe directory level into bin/ for reverse engineering.
+# Downloads the MSIX, extracts it (flat ZIP), URL-decodes filenames,
+# and copies all flat files from app/resources/ into bin/ for reverse
+# engineering.
 #
 # Usage: ./scripts/extract-cowork-svc.sh
 #
@@ -82,65 +83,60 @@ info "Latest version: $LATEST_VERSION"
 if [ -d "$OUTPUT_DIR" ] && [ -f "$VERSION_FILE" ]; then
     CURRENT_VERSION=$(cat "$VERSION_FILE")
     if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
-        ok "bin/ is already at version $LATEST_VERSION — nothing to do."
+        ok "bin/ is already at version $LATEST_VERSION - nothing to do."
         exit 0
     fi
     info "Upgrading from $CURRENT_VERSION to $LATEST_VERSION"
 fi
 
-# --- Download installer ---
+# --- Download MSIX package ---
 
-DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/${LATEST_VERSION}/Claude-${LATEST_HASH}.exe"
+DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/${LATEST_VERSION}/Claude-${LATEST_HASH}.msix"
 
 TMPDIR_WORK="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
-info "Downloading Claude Desktop installer (~146 MB)..."
+info "Downloading Claude Desktop MSIX package..."
 info "URL: $DOWNLOAD_URL"
 
-EXE_FILE="$TMPDIR_WORK/Claude-Setup-x64.exe"
+MSIX_FILE="$TMPDIR_WORK/Claude.msix"
 
 if [ "$FETCH" = "curl" ]; then
-    curl -fSL --progress-bar -A "$USER_AGENT" -o "$EXE_FILE" "$DOWNLOAD_URL" || die "Download failed"
+    curl -fSL --progress-bar -A "$USER_AGENT" -o "$MSIX_FILE" "$DOWNLOAD_URL" || die "Download failed"
 else
-    wget --show-progress -O "$EXE_FILE" -U "$USER_AGENT" "$DOWNLOAD_URL" || die "Download failed"
+    wget --show-progress -O "$MSIX_FILE" -U "$USER_AGENT" "$DOWNLOAD_URL" || die "Download failed"
 fi
 
-[ -s "$EXE_FILE" ] || die "Downloaded file is empty"
+[ -s "$MSIX_FILE" ] || die "Downloaded file is empty"
 ok "Download complete"
 
-# --- Extract installer ---
+# --- Extract MSIX (flat ZIP with app/, assets/, AppxManifest.xml) ---
 
-info "Extracting installer..."
-7z x -y "$EXE_FILE" -o"$TMPDIR_WORK/extract" >/dev/null 2>&1
+info "Extracting MSIX package..."
+7z x -y "$MSIX_FILE" -o"$TMPDIR_WORK/extract" >/dev/null 2>&1
 
-# --- Extract nupkg ---
+# --- URL-decode filenames (MSIX encodes @ as %40 etc.) ---
 
-info "Extracting nupkg..."
-NUPKG=$(find "$TMPDIR_WORK/extract" -maxdepth 1 -name "AnthropicClaude-*.nupkg" | head -1)
-[ -n "$NUPKG" ] || die "No AnthropicClaude nupkg found in installer"
+info "URL-decoding MSIX paths..."
+python3 -c "
+import os, urllib.parse
+root = '$TMPDIR_WORK/extract'
+for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+    for name in filenames + dirnames:
+        decoded = urllib.parse.unquote(name)
+        if decoded != name:
+            os.rename(os.path.join(dirpath, name), os.path.join(dirpath, decoded))
+"
 
-7z x -y "$NUPKG" -o"$TMPDIR_WORK/nupkg" >/dev/null 2>&1
+# --- Copy flat files from app/resources/ into bin/ ---
 
-# --- Find cowork-svc.exe and copy all files from its directory ---
+BIN_SOURCE_DIR="$TMPDIR_WORK/extract/app/resources"
+[ -d "$BIN_SOURCE_DIR" ] || die "app/resources/ not found in MSIX - is this a valid Claude package?"
 
-COWORK_SVC="$TMPDIR_WORK/nupkg/lib/net45/cowork-svc.exe"
+COWORK_SVC="$BIN_SOURCE_DIR/cowork-svc.exe"
+[ -f "$COWORK_SVC" ] || die "cowork-svc.exe not found at $BIN_SOURCE_DIR"
 
-if [ ! -f "$COWORK_SVC" ]; then
-    info "cowork-svc.exe not at expected path, searching..."
-    COWORK_SVC=$(find "$TMPDIR_WORK/nupkg" -name "cowork-svc.exe" -type f | head -1)
-fi
-
-if [ -n "$COWORK_SVC" ] && [ -f "$COWORK_SVC" ]; then
-    BIN_SOURCE_DIR="$(dirname "$COWORK_SVC")"
-    info "Found binaries in: $BIN_SOURCE_DIR"
-else
-    warn "cowork-svc.exe is no longer bundled in this version ($LATEST_VERSION)"
-    BIN_SOURCE_DIR="$TMPDIR_WORK/nupkg/lib/net45/resources"
-    [ -d "$BIN_SOURCE_DIR" ] || die "Fallback path lib/net45/resources/ not found in nupkg"
-    info "Using fallback path: $BIN_SOURCE_DIR"
-fi
-
+info "Found binaries in: $BIN_SOURCE_DIR"
 info "Files at this level:"
 find "$BIN_SOURCE_DIR" -maxdepth 1 -type f -exec ls -lh {} + 2>/dev/null | while read -r line; do
     info "  $line"
@@ -149,6 +145,7 @@ done || true
 mkdir -p "$OUTPUT_DIR"
 rm -rf "$OUTPUT_DIR"/*
 
+# Copy only flat files (skip subdirectories like fonts/, ion-dist/, app.asar.unpacked/)
 find "$BIN_SOURCE_DIR" -maxdepth 1 -type f -exec cp {} "$OUTPUT_DIR/" \;
 
 FILE_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f | wc -l)

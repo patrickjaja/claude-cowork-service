@@ -22,8 +22,8 @@ Before any version update, ensure a clean starting point:
 >    ```
 > 2. Save old files for diffing:
 >    ```bash
->    # NOTE: cowork-svc.exe was removed from the installer in v1.6259.0
->    # Save app.asar and vm-bundle config for comparison instead
+>    cp bin/cowork-svc.exe /tmp/cowork-svc-old.exe
+>    cp bin/smol-bin.x64.vhdx /tmp/smol-bin-old.vhdx
 >    cp vm-bundle/vm-bundle-config.json /tmp/vm-bundle-config-old.json
 >    cp bin/app.asar /tmp/app-asar-old.asar
 >    ```
@@ -54,7 +54,21 @@ Copy-paste this into Claude Code when a new version is available:
 >    cat bin/.version vm-bundle/.version
 >    ```
 >
-> 3. Compare app.asar for protocol changes (primary source of truth since v1.6259.0):
+> 3. Compare cowork-svc.exe for binary changes:
+>    ```bash
+>    # Check Go version and size
+>    strings bin/cowork-svc.exe | grep -E "^go[0-9]"
+>    ls -la bin/cowork-svc.exe
+>    sha256sum bin/cowork-svc.exe
+>    # Compare handler functions with previous version
+>    diff <(strings /tmp/cowork-svc-old.exe | grep "handle[A-Z]" | sort -u) \
+>         <(strings bin/cowork-svc.exe | grep "handle[A-Z]" | sort -u)
+>    # Check for new module dependencies
+>    diff <(strings /tmp/cowork-svc-old.exe | grep "github.com/" | sort -u) \
+>         <(strings bin/cowork-svc.exe | grep "github.com/" | sort -u)
+>    ```
+>
+> 4. Compare app.asar for protocol changes:
 >    ```bash
 >    # Extract old and new app.asar for comparison
 >    npx @electron/asar extract /tmp/app-asar-old.asar /tmp/app-asar-old
@@ -64,18 +78,18 @@ Copy-paste this into Claude Code when a new version is available:
 >         <(rg -o 'method:"[^"]*"' /tmp/app-asar-new/app/.vite/build/index.js | sort -u)
 >    ```
 >
-> 4. Compare VM bundle config:
+> 5. Compare VM bundle config:
 >    ```bash
 >    diff /tmp/vm-bundle-config-old.json vm-bundle/vm-bundle-config.json
 >    ```
 >    Note: SHA change = new VM images. Checksum changes = rebuilt files.
 >
-> 5. Update documentation:
+> 6. Update documentation:
 >    - `COWORK_RPC_PROTOCOL.md` — if new methods or changed parameters found
 >    - `COWORK_VM_BUNDLE.md` — update checksums, SHA, version history table
->    - `COWORK_SVC_BINARY.md` — update size, version history, note any new files
+>    - `COWORK_SVC_BINARY.md` — update size, SHA, Go version, handler diff, version history
 >
-> 6. Commit with message: `Update bin/ and vm-bundle/ to v<VERSION>`
+> 7. Commit with message: `Update bin/ and vm-bundle/ to v<VERSION>`
 >    (Note: `.upstream-version` is updated automatically by the extract script)
 
 ---

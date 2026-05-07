@@ -18,7 +18,7 @@ All notable changes to claude-cowork-service will be documented in this file.
 - **New JS files**: `coworkArtifact.js` (new version), `buddy.js` added to app.asar build artifacts
 - **Removed JS file**: `sqliteWorker.node.js` removed from app.asar
 - **VM bundle**: Unchanged - same SHA (`5680b11b...`), same file checksums (stable since v1.1.9669)
-- **cowork-svc.exe**: Still absent from installer (removed in v1.6259.0)
+- **Extract scripts migrated from Squirrel (nupkg) to MSIX** - The installer format changed from Squirrel (`lib/net45/resources/`) to MSIX (`app/resources/`). The extract scripts now use MSIX extraction, and `cowork-svc.exe` + `smol-bin.x64.vhdx` are properly extracted again (they were never removed - just moved to a different location in the installer package)
 - **Updated reference docs** - COWORK_RPC_PROTOCOL.md, COWORK_SVC_BINARY.md, COWORK_VM_BUNDLE.md, CLAUDE.md, update-prompt.md updated to v1.6608.0
 
 ### Removed
@@ -36,8 +36,7 @@ All notable changes to claude-cowork-service will be documented in this file.
 - **`StartVM` now receives the bundle path from the RPC layer** (`pipe/handlers.go`) — `pipe/handlers.go` forwards `params.BundlePath` to the backend so KVM can resolve the guest disk before launch instead of inferring it from the session name.
 - **`Spawn` vfs bind failure now returns an RPC error** (`vm/backend.go`) — previously the bind error path synthesised a `stderr` + `exit code 1` pair on the process channel and returned `nil`, so Desktop saw a "process started, then died" sequence with no actionable error. We now return the bind error directly so `spawn` fails loud and Desktop's normal error handling kicks in.
 - **Upstream update to Claude Desktop v1.6259.0** (from v1.5354.0)
-- **cowork-svc.exe removed from installer** - The Go binary is no longer shipped in the Claude Desktop Windows installer. The named pipe protocol survives in the TypeScript VM client (index.js), but the binary that serves it is no longer bundled. macOS now uses @ant/claude-swift native addon for VM management via Apple Virtualization.framework.
-- **smol-bin.x64.vhdx removed from installer** - The empty ext4 disk is no longer bundled.
+- **Extract scripts migrated from Squirrel to MSIX** - Claude Desktop switched installer format from Squirrel (nupkg at `lib/net45/resources/`) to MSIX (at `app/resources/`). The extract scripts were updated to use MSIX extraction. `cowork-svc.exe` and `smol-bin.x64.vhdx` were never actually removed - they moved to the MSIX package structure. macOS now uses @ant/claude-swift native addon for VM management via Apple Virtualization.framework.
 - **cowork-plugin-shim.sh removed from installer** - The plugin shim script is no longer bundled.
 - **VM bundle**: Unchanged - same SHA (`5680b11b...`), same file checksums (stable since v1.1.9669)
 - **app.asar**: SDK 0.2.121 -> 0.2.128. New build artifacts: buddy.js. New installer directories: fonts/, drizzle/sqlite/, ion-dist/, seed/.
@@ -46,7 +45,7 @@ All notable changes to claude-cowork-service will be documented in this file.
 - **No new RPC methods** - all 22 methods, 8 event types, spawn parameters, and wire format are identical
 - **No Go code changes needed**
 - **Updated reference docs** - COWORK_RPC_PROTOCOL.md, COWORK_SVC_BINARY.md, COWORK_VM_BUNDLE.md updated to v1.6259.0
-- **extract-cowork-svc.sh updated** - Script now falls back to extracting from lib/net45/resources/ when cowork-svc.exe is not found in the installer (handles v1.6259.0+ installer structure change)
+- **extract-cowork-svc.sh updated** - Script now extracts from MSIX package (`app/resources/`) instead of Squirrel nupkg (`lib/net45/resources/`), matching the current installer format
 
 ### Fixed
 - **KVM exit event key mismatch** (`vm/bridge.go`) — the guest emits exit events as `{"type":"event","event":"exit","params":{"code":N,...}}`, but the native backend's `process.ExitEvent` uses `"exitCode"`. The bridge was forwarding the guest's `"code"` verbatim, so KVM-mode clients saw a different field name than native-mode clients. Both the nested-event form and the direct-event form now rename `code` → `exitCode` before emit.

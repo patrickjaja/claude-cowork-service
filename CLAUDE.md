@@ -56,7 +56,7 @@ make test
 | `vm/` | Dormant QEMU/KVM backend (manager, qemu, vsock, bundle, network) |
 | `scripts/extract-cowork-svc.sh` | Downloads latest Claude Desktop, extracts `bin/` contents |
 | `scripts/extract-vm-bundle.sh` | Downloads latest, extracts VM bundle (rootfs, vmlinuz, initrd, config) |
-| `bin/` | Extracted upstream binaries (`app.asar`, `chrome-native-host.exe`, locale files, icons) with `.version` file. Note: `cowork-svc.exe` was removed from the installer in v1.6259.0 |
+| `bin/` | Extracted upstream binaries (`cowork-svc.exe`, `app.asar`, `chrome-native-host.exe`, `smol-bin.x64.vhdx`, locale files, icons) with `.version` file |
 | `vm-bundle/` | Extracted VM bundle (rootfs.vhdx.zst, vmlinuz.zst, initrd.zst, config) with `.version` file |
 | `Makefile` | Build automation (build, build-arm64, install, clean, lint, test) |
 | `PKGBUILD` | Arch Linux AUR package definition |
@@ -69,7 +69,7 @@ make test
 
 ## Upstream Reference Materials
 
-- `bin/` --- Extracted from Claude Desktop Windows installer (`app.asar`, `chrome-native-host.exe`, locale JSONs, icons). Note: `cowork-svc.exe` was removed from the installer in v1.6259.0
+- `bin/` --- Extracted from Claude Desktop Windows installer MSIX package (`cowork-svc.exe`, `app.asar`, `chrome-native-host.exe`, `smol-bin.x64.vhdx`, locale JSONs, icons)
 - `vm-bundle/` --- VM images + config downloaded from Anthropic CDN
 - Both directories have `.version` files tracking the Claude Desktop version they were extracted from
 - Currently at version **1.6608.0**
@@ -99,9 +99,11 @@ When `bin/` and `vm-bundle/` are updated to a new version, run a deep analysis t
 ### bin/ deep dive
 
 ```bash
-# NOTE: cowork-svc.exe was removed from the installer in v1.6259.0
-# Check app.asar for protocol changes instead (primary source of truth)
-sha256sum bin/.version bin/chrome-native-host.exe bin/app.asar
+# cowork-svc.exe: Go version, module structure, RPC handlers, dependencies
+strings bin/cowork-svc.exe | grep -E "^go[0-9]"
+strings bin/cowork-svc.exe | grep "github.com/" | sort -u
+strings bin/cowork-svc.exe | grep "handle[A-Z]" | sort -u
+sha256sum bin/.version bin/cowork-svc.exe bin/chrome-native-host.exe bin/smol-bin.x64.vhdx bin/app.asar
 
 # app.asar: Electron app version, SDK versions, dependencies
 mkdir -p .vm-analysis/asar

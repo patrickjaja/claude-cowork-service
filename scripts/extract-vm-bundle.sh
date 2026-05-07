@@ -2,7 +2,7 @@
 #
 # Extract VM bundle from Claude Desktop and download the VM files
 #
-# Downloads the Claude Desktop Windows installer, extracts app.asar,
+# Downloads the Claude Desktop Windows MSIX package, extracts app.asar,
 # parses the embedded VM bundle config (sha + file list), and downloads
 # the VM bundle files (vmlinuz, initrd, rootfs) for investigation.
 #
@@ -123,40 +123,49 @@ info "Target arch: $VM_ARCH"
 if [ -d "$VM_OUTPUT_DIR" ] && [ -f "$VERSION_FILE" ]; then
     CURRENT_VERSION=$(cat "$VERSION_FILE")
     if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
-        ok "vm-bundle/ is already at version $LATEST_VERSION — nothing to do."
+        ok "vm-bundle/ is already at version $LATEST_VERSION - nothing to do."
         exit 0
     fi
     info "Upgrading from $CURRENT_VERSION to $LATEST_VERSION"
 fi
 
-# --- Download installer ---
+# --- Download MSIX package ---
 
-DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/${LATEST_VERSION}/Claude-${LATEST_HASH}.exe"
+DOWNLOAD_URL="https://downloads.claude.ai/releases/win32/x64/${LATEST_VERSION}/Claude-${LATEST_HASH}.msix"
 
 TMPDIR_WORK="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
-info "Downloading Claude Desktop installer (~146 MB)..."
+info "Downloading Claude Desktop MSIX package..."
 info "URL: $DOWNLOAD_URL"
 
-EXE_FILE="$TMPDIR_WORK/Claude-Setup-x64.exe"
-fetch_url "$DOWNLOAD_URL" "$EXE_FILE" || die "Download failed"
-[ -s "$EXE_FILE" ] || die "Downloaded file is empty"
+MSIX_FILE="$TMPDIR_WORK/Claude.msix"
+fetch_url "$DOWNLOAD_URL" "$MSIX_FILE" || die "Download failed"
+[ -s "$MSIX_FILE" ] || die "Downloaded file is empty"
 ok "Download complete"
 
-# --- Extract installer → nupkg → app.asar ---
+# --- Extract MSIX (flat ZIP with app/, assets/, AppxManifest.xml) ---
 
-info "Extracting installer..."
-7z x -y "$EXE_FILE" -o"$TMPDIR_WORK/extract" >/dev/null 2>&1
+info "Extracting MSIX package..."
+7z x -y "$MSIX_FILE" -o"$TMPDIR_WORK/extract" >/dev/null 2>&1
 
-info "Extracting nupkg..."
-NUPKG=$(find "$TMPDIR_WORK/extract" -maxdepth 1 -name "AnthropicClaude-*.nupkg" | head -1)
-[ -n "$NUPKG" ] || die "No AnthropicClaude nupkg found in installer"
-7z x -y "$NUPKG" -o"$TMPDIR_WORK/nupkg" >/dev/null 2>&1
+# --- URL-decode filenames (MSIX encodes @ as %40 etc.) ---
 
-info "Searching for app.asar..."
-ASAR_FILE=$(find "$TMPDIR_WORK/nupkg" -name "app.asar" -type f | head -1)
-[ -n "$ASAR_FILE" ] || die "app.asar not found in nupkg"
+info "URL-decoding MSIX paths..."
+python3 -c "
+import os, urllib.parse
+root = '$TMPDIR_WORK/extract'
+for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+    for name in filenames + dirnames:
+        decoded = urllib.parse.unquote(name)
+        if decoded != name:
+            os.rename(os.path.join(dirpath, name), os.path.join(dirpath, decoded))
+"
+
+# --- Find app.asar in MSIX layout ---
+
+ASAR_FILE="$TMPDIR_WORK/extract/app/resources/app.asar"
+[ -f "$ASAR_FILE" ] || die "app.asar not found at app/resources/ - is this a valid Claude MSIX?"
 ok "Found app.asar: $ASAR_FILE"
 
 ASAR_DIR="$TMPDIR_WORK/asar-extracted"
