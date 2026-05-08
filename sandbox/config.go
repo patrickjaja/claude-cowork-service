@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -151,4 +152,39 @@ func normalizeSRTConfig(config srtConfig) srtConfig {
 	config.Filesystem.DenyWrite = uniqueStrings(cleanPaths(config.Filesystem.DenyWrite))
 	config.Linux.BindMounts = dedupeBindMounts(config.Linux.BindMounts)
 	return config
+}
+
+// isUnrestrictedNetwork returns true when the network config is effectively
+// unrestricted ("*" in allowedDomains with no denied domains).
+func isUnrestrictedNetwork(config srtConfig) bool {
+	if len(config.Network.DeniedDomains) > 0 {
+		return false
+	}
+	for _, d := range config.Network.AllowedDomains {
+		if d == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// marshalSRTConfig serializes the SRT config to JSON. When all domains are
+// allowed (allowedDomains includes "*" with no denied domains), the network
+// key is omitted entirely so that SRT does not create a network namespace.
+// The Claude CLI binary does not honour HTTP_PROXY env vars, so it cannot
+// reach the API through SRT's proxy inside bwrap's isolated network. Omitting
+// the network key keeps full filesystem sandboxing while allowing direct
+// network access from the host namespace.
+func marshalSRTConfig(config srtConfig) ([]byte, error) {
+	if isUnrestrictedNetwork(config) {
+		type noNetwork struct {
+			Filesystem filesystemConfig `json:"filesystem"`
+			Linux      linuxConfig      `json:"linux,omitempty"`
+		}
+		return json.Marshal(noNetwork{
+			Filesystem: config.Filesystem,
+			Linux:      config.Linux,
+		})
+	}
+	return json.Marshal(config)
 }

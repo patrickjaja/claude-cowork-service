@@ -102,7 +102,13 @@ func (b *Backend) wrapCommand(ctx native.SpawnContext, cmd string, args []string
 	sandboxCwd, args, env := remapSpawnPathsForSandbox(ctx, cwd, args, env)
 
 	config := buildSRTConfig(ctx, sandboxCwd, allowedDomains, cmd, baseConfig)
-	configJSON, err := json.Marshal(config)
+
+	// When all domains are allowed ("*"), skip network isolation entirely.
+	// The Claude CLI binary doesn't use HTTP_PROXY env vars, so it can't
+	// reach the API through SRT's proxy inside bwrap's network namespace.
+	// Omitting the network key from the JSON config tells SRT that no
+	// network restriction is needed, so bwrap runs without --unshare-net.
+	configJSON, err := marshalSRTConfig(config)
 	if err != nil {
 		return "", nil, nil, "", fmt.Errorf("sandbox: encoding srt config: %w", err)
 	}
@@ -303,6 +309,16 @@ func prepareSandboxMountTargets(ctx native.SpawnContext) error {
 		return names[i] < names[j]
 	})
 
+	// Resolve mount host paths for parent-child detection below.
+	resolvedPaths := make(map[string]string) // mount name → resolved host path
+	for _, name := range names {
+		mount := ctx.ResolvedMounts[name]
+		if mount.Path == "" {
+			continue
+		}
+		resolvedPaths[name] = filepath.Clean(mount.Path)
+	}
+
 	for _, name := range names {
 		mount := ctx.ResolvedMounts[name]
 		if mount.Path == "" || !mountSourceIsDirectory(mount.Path) {
@@ -325,6 +341,45 @@ func prepareSandboxMountTargets(ctx native.SpawnContext) error {
 			return fmt.Errorf("sandbox: creating mount target %s: %w", target, err)
 		}
 	}
+
+	// Fix symlinks inside mount source directories that will become child
+	// mount targets. bwrap can't bind-mount on top of a symlink — it needs a
+	// real directory. Desktop creates symlinks like .claude/skills →
+	// skills-plugin/... which break when bwrap tries to overlay-mount the
+	// child path inside the parent bind mount.
+	//
+	// For each pair of mounts where one is a child of another (e.g.,
+	// ".claude/skills" is under ".claude"), check whether the child's
+	// relative path inside the parent source is a symlink. If so, replace it
+	// with an empty directory so bwrap has a valid mount target.
+	for _, child := range names {
+		for _, parent := range names {
+			if child == parent {
+				continue
+			}
+			rel, err := filepath.Rel(parent, child)
+			if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+				continue
+			}
+			parentMount := ctx.ResolvedMounts[parent]
+			if parentMount.Path == "" {
+				continue
+			}
+			symlinkPath := filepath.Join(parentMount.Path, rel)
+			info, err := os.Lstat(symlinkPath)
+			if err != nil || info.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			if err := os.Remove(symlinkPath); err != nil {
+				return fmt.Errorf("sandbox: replacing symlink %s with directory: %w", symlinkPath, err)
+			}
+			if err := os.MkdirAll(symlinkPath, 0755); err != nil {
+				return fmt.Errorf("sandbox: creating mount point dir %s: %w", symlinkPath, err)
+			}
+			log.Printf("[sandbox] replaced symlink with directory for mount target: %s", symlinkPath)
+		}
+	}
+
 	return nil
 }
 
