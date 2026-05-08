@@ -34,8 +34,8 @@ func (b *recordingBackend) Kill(processID string, signal string) error { return 
 func (b *recordingBackend) WriteStdin(processID string, data []byte) error {
 	return nil
 }
-func (b *recordingBackend) IsProcessRunning(processID string) (bool, error) {
-	return false, nil
+func (b *recordingBackend) IsProcessRunning(processID string) (bool, int, error) {
+	return false, 0, nil
 }
 func (b *recordingBackend) MountPath(processID string, subpath string, mountName string, mode string) error {
 	return nil

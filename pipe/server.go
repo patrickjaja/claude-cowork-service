@@ -37,7 +37,7 @@ type VMBackend interface {
 	Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]MountSpec, rawParams []byte) (string, error)
 	Kill(processID string, signal string) error
 	WriteStdin(processID string, data []byte) error
-	IsProcessRunning(processID string) (bool, error)
+	IsProcessRunning(processID string) (bool, int, error)
 	MountPath(processID string, subpath string, mountName string, mode string) error
 	ReadFile(processName string, filePath string) ([]byte, error)
 	InstallSdk(sdkSubpath string, version string) error

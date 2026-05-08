@@ -410,7 +410,7 @@ func (b *Backend) WriteStdin(processID string, data []byte) error {
 	return b.tracker.writeStdin(processID, data)
 }
 
-func (b *Backend) IsProcessRunning(processID string) (bool, error) {
+func (b *Backend) IsProcessRunning(processID string) (bool, int, error) {
 	return b.tracker.isRunning(processID)
 }
 

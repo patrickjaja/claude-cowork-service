@@ -341,12 +341,12 @@ func (h *Handler) handleIsProcessRunning(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	running, err := h.backend.IsProcessRunning(p.ProcessID)
+	running, exitCode, err := h.backend.IsProcessRunning(p.ProcessID)
 	if err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, req.ID, map[string]bool{"running": running})
+	WriteResponse(conn, req.ID, map[string]interface{}{"running": running, "exitCode": exitCode})
 }
 
 func (h *Handler) handleMountPath(conn net.Conn, req Request) {

@@ -499,11 +499,11 @@ func (b *KvmBackend) WriteStdin(processID string, data []byte) error {
 	})
 }
 
-func (b *KvmBackend) IsProcessRunning(processID string) (bool, error) {
+func (b *KvmBackend) IsProcessRunning(processID string) (bool, int, error) {
 	b.procMu.Lock()
 	_, ok := b.processes[processID]
 	b.procMu.Unlock()
-	return ok, nil
+	return ok, 0, nil
 }
 
 // MountPath adds a bind mount into the virtiofs staging area. The guest
