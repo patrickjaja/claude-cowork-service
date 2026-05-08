@@ -34,8 +34,8 @@ func (b *recordingBackend) Kill(processID string, signal string) error { return 
 func (b *recordingBackend) WriteStdin(processID string, data []byte) error {
 	return nil
 }
-func (b *recordingBackend) IsProcessRunning(processID string) (bool, error) {
-	return false, nil
+func (b *recordingBackend) IsProcessRunning(processID string) (bool, int, error) {
+	return false, 0, nil
 }
 func (b *recordingBackend) MountPath(processID string, subpath string, mountName string, mode string) error {
 	return nil
@@ -44,7 +44,7 @@ func (b *recordingBackend) ReadFile(processName string, filePath string) ([]byte
 	return nil, nil
 }
 func (b *recordingBackend) InstallSdk(sdkSubpath string, version string) error { return nil }
-func (b *recordingBackend) AddApprovedOauthToken(name string, token string) error {
+func (b *recordingBackend) AddApprovedOauthToken(token string) error {
 	return nil
 }
 func (b *recordingBackend) SetDebugLogging(enabled bool) {}

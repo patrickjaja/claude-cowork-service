@@ -23,6 +23,7 @@ Before any version update, ensure a clean starting point:
 > 2. Save old files for diffing:
 >    ```bash
 >    cp bin/cowork-svc.exe /tmp/cowork-svc-old.exe
+>    cp bin/smol-bin.x64.vhdx /tmp/smol-bin-old.vhdx
 >    cp vm-bundle/vm-bundle-config.json /tmp/vm-bundle-config-old.json
 >    cp bin/app.asar /tmp/app-asar-old.asar
 >    ```
@@ -53,26 +54,42 @@ Copy-paste this into Claude Code when a new version is available:
 >    cat bin/.version vm-bundle/.version
 >    ```
 >
-> 3. Compare cowork-svc.exe (if old version was saved):
+> 3. Compare cowork-svc.exe for binary changes:
 >    ```bash
->    # Size comparison
->    ls -la bin/cowork-svc.exe /tmp/cowork-svc-old.exe
->    # String differences (new RPC methods, endpoints)
->    diff <(strings /tmp/cowork-svc-old.exe | sort -u) <(strings bin/cowork-svc.exe | sort -u) | head -100
+>    # Check Go version and size
+>    strings bin/cowork-svc.exe | grep -E "^go[0-9]"
+>    ls -la bin/cowork-svc.exe
+>    sha256sum bin/cowork-svc.exe
+>    # Compare handler functions with previous version
+>    diff <(strings /tmp/cowork-svc-old.exe | grep "handle[A-Z]" | sort -u) \
+>         <(strings bin/cowork-svc.exe | grep "handle[A-Z]" | sort -u)
+>    # Check for new module dependencies
+>    diff <(strings /tmp/cowork-svc-old.exe | grep "github.com/" | sort -u) \
+>         <(strings bin/cowork-svc.exe | grep "github.com/" | sort -u)
 >    ```
 >
-> 4. Compare VM bundle config:
+> 4. Compare app.asar for protocol changes:
+>    ```bash
+>    # Extract old and new app.asar for comparison
+>    npx @electron/asar extract /tmp/app-asar-old.asar /tmp/app-asar-old
+>    npx @electron/asar extract bin/app.asar /tmp/app-asar-new
+>    # Check for RPC method changes in the TypeScript VM client
+>    diff <(rg -o 'method:"[^"]*"' /tmp/app-asar-old/app/.vite/build/index.js | sort -u) \
+>         <(rg -o 'method:"[^"]*"' /tmp/app-asar-new/app/.vite/build/index.js | sort -u)
+>    ```
+>
+> 5. Compare VM bundle config:
 >    ```bash
 >    diff /tmp/vm-bundle-config-old.json vm-bundle/vm-bundle-config.json
 >    ```
 >    Note: SHA change = new VM images. Checksum changes = rebuilt files.
 >
-> 5. Update documentation:
+> 6. Update documentation:
 >    - `COWORK_RPC_PROTOCOL.md` — if new methods or changed parameters found
 >    - `COWORK_VM_BUNDLE.md` — update checksums, SHA, version history table
->    - `COWORK_SVC_BINARY.md` — update size, version history, note any new files
+>    - `COWORK_SVC_BINARY.md` — update size, SHA, Go version, handler diff, version history
 >
-> 6. Commit with message: `Update bin/ and vm-bundle/ to v<VERSION>`
+> 7. Commit with message: `Update bin/ and vm-bundle/ to v<VERSION>`
 >    (Note: `.upstream-version` is updated automatically by the extract script)
 
 ---
@@ -194,5 +211,5 @@ Run this on EVERY version update to verify our implementation still matches:
 | New event type | Search for event emission in JS | Add to process/events.go |
 | VM bundle SHA change | Compare vm-bundle-config.json | Note in COWORK_VM_BUNDLE.md |
 | New files in bin/ | Compare directory listings | Document in COWORK_SVC_BINARY.md |
-| cowork-svc.exe size change | Compare file sizes | May indicate new functionality |
+| app.asar changes | Extract and diff index.js | Check for new RPC methods, spawn params, event types |
 | Session type change | Search for CLAUDE_CODE_TAGS in JS | Update backend.go handling |

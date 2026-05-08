@@ -109,9 +109,11 @@ type createVMParams struct {
 }
 
 type startVMParams struct {
-	Name       string `json:"name"`
-	BundlePath string `json:"bundlePath"`
-	MemoryGB   int    `json:"memoryGB"`
+	Name        string `json:"name"`
+	BundlePath  string `json:"bundlePath"`
+	MemoryGB    int    `json:"memoryGB"`
+	CPUCount    int    `json:"cpuCount"`
+	APIProbeURL string `json:"apiProbeURL"`
 }
 
 type killParams struct {
@@ -131,7 +133,6 @@ type spawnParams struct {
 	AllowedDomains    []string             `json:"allowedDomains"`
 	OneShot           bool                 `json:"oneShot"`
 	MountSkeletonHome bool                 `json:"mountSkeletonHome"`
-	MountConda        string               `json:"mountConda"`
 }
 
 type getSessionsDiskInfoParams struct {
@@ -169,7 +170,6 @@ type readFileParams struct {
 }
 
 type oauthTokenParams struct {
-	Name  string `json:"name"`
 	Token string `json:"token"`
 }
 
@@ -341,12 +341,12 @@ func (h *Handler) handleIsProcessRunning(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	running, err := h.backend.IsProcessRunning(p.ProcessID)
+	running, exitCode, err := h.backend.IsProcessRunning(p.ProcessID)
 	if err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	WriteResponse(conn, req.ID, map[string]bool{"running": running})
+	WriteResponse(conn, req.ID, map[string]interface{}{"running": running, "exitCode": exitCode})
 }
 
 func (h *Handler) handleMountPath(conn net.Conn, req Request) {
@@ -396,7 +396,7 @@ func (h *Handler) handleAddApprovedOauthToken(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32602, "Invalid params: "+err.Error())
 		return
 	}
-	if err := h.backend.AddApprovedOauthToken(p.Name, p.Token); err != nil {
+	if err := h.backend.AddApprovedOauthToken(p.Token); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}

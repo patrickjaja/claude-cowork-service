@@ -82,7 +82,7 @@ func TestEmitRemovesExitedProcessesFromRunningState(t *testing.T) {
 
 			b.emit(tc.event)
 
-			running, err := b.IsProcessRunning(tc.id)
+			running, _, err := b.IsProcessRunning(tc.id)
 			if err != nil {
 				t.Fatalf("IsProcessRunning: %v", err)
 			}

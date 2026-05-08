@@ -31,6 +31,7 @@ type localProcess struct {
 	cmd               *exec.Cmd
 	stdin             io.WriteCloser
 	done              chan struct{}
+	exitCode          int
 	mu                sync.Mutex
 	vmPrefix          []byte      // e.g. "/sessions/optimistic-nice-brahmagupta"
 	realPrefix        []byte      // e.g. "/home/user/.local/share/claude-cowork/sessions/optimistic-nice-brahmagupta"
@@ -254,6 +255,7 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 			}
 		}
 
+		lp.exitCode = code
 		if sig != "" {
 			pt.emit(process.NewExitEventWithSignal(id, code, sig))
 		} else {
@@ -675,21 +677,21 @@ func (pt *processTracker) writeStdin(processID string, data []byte) error {
 	}
 }
 
-// isRunning checks if a tracked process is still running.
-func (pt *processTracker) isRunning(processID string) (bool, error) {
+// isRunning checks if a tracked process is still running and returns its exit code.
+func (pt *processTracker) isRunning(processID string) (bool, int, error) {
 	pt.mu.RLock()
 	lp, ok := pt.processes[processID]
 	pt.mu.RUnlock()
 
 	if !ok {
-		return false, nil
+		return false, 0, nil
 	}
 
 	select {
 	case <-lp.done:
-		return false, nil
+		return false, lp.exitCode, nil
 	default:
-		return true, nil
+		return true, 0, nil
 	}
 }
 

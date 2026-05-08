@@ -12,7 +12,7 @@ This is a native Linux backend daemon for Claude Desktop's Cowork feature. It re
 
 **Session dirs:** `~/.local/share/claude-cowork/sessions/<name>/`
 
-**Protocol:** 22 RPC methods over length-prefixed JSON (4-byte big-endian header, max 10 MB per message).
+**Protocol:** 21 active RPC methods (1 removed) over length-prefixed JSON (4-byte big-endian header, max 10 MB per message).
 
 **Key constraint:** The upstream binary (`cowork-svc.exe`) is managed remotely by Anthropic and changes without notice. Every RPC method, parameter name, and protocol behavior can change between releases. This makes the project inherently fragile --- protocol documentation and handler code must be re-validated on each upstream update.
 
@@ -56,7 +56,7 @@ make test
 | `vm/` | Dormant QEMU/KVM backend (manager, qemu, vsock, bundle, network) |
 | `scripts/extract-cowork-svc.sh` | Downloads latest Claude Desktop, extracts `bin/` contents |
 | `scripts/extract-vm-bundle.sh` | Downloads latest, extracts VM bundle (rootfs, vmlinuz, initrd, config) |
-| `bin/` | Extracted upstream binaries (`cowork-svc.exe`, `app.asar`, locale files, icons) with `.version` file |
+| `bin/` | Extracted upstream binaries (`cowork-svc.exe`, `app.asar`, `chrome-native-host.exe`, `smol-bin.x64.vhdx`, locale files, icons) with `.version` file |
 | `vm-bundle/` | Extracted VM bundle (rootfs.vhdx.zst, vmlinuz.zst, initrd.zst, config) with `.version` file |
 | `Makefile` | Build automation (build, build-arm64, install, clean, lint, test) |
 | `PKGBUILD` | Arch Linux AUR package definition |
@@ -69,10 +69,10 @@ make test
 
 ## Upstream Reference Materials
 
-- `bin/` --- Extracted from Claude Desktop Windows installer (`cowork-svc.exe` lives alongside `app.asar`, locale JSONs, icons)
+- `bin/` --- Extracted from Claude Desktop Windows installer MSIX package (`cowork-svc.exe`, `app.asar`, `chrome-native-host.exe`, `smol-bin.x64.vhdx`, locale JSONs, icons)
 - `vm-bundle/` --- VM images + config downloaded from Anthropic CDN
 - Both directories have `.version` files tracking the Claude Desktop version they were extracted from
-- Currently at version **1.6259.0**
+- Currently at version **1.6608.0**
 
 ## Version-Sensitive Artifacts
 
@@ -103,7 +103,7 @@ When `bin/` and `vm-bundle/` are updated to a new version, run a deep analysis t
 strings bin/cowork-svc.exe | grep -E "^go[0-9]"
 strings bin/cowork-svc.exe | grep "github.com/" | sort -u
 strings bin/cowork-svc.exe | grep "handle[A-Z]" | sort -u
-sha256sum bin/.version bin/cowork-svc.exe bin/chrome-native-host.exe bin/smol-bin.x64.vhdx bin/default.clod
+sha256sum bin/.version bin/cowork-svc.exe bin/chrome-native-host.exe bin/smol-bin.x64.vhdx bin/app.asar
 
 # app.asar: Electron app version, SDK versions, dependencies
 mkdir -p .vm-analysis/asar

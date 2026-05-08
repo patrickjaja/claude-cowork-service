@@ -469,7 +469,7 @@ func (b *Backend) WriteStdin(processID string, data []byte) error {
 	return b.tracker.writeStdin(processID, data)
 }
 
-func (b *Backend) IsProcessRunning(processID string) (bool, error) {
+func (b *Backend) IsProcessRunning(processID string) (bool, int, error) {
 	return b.tracker.isRunning(processID)
 }
 
@@ -496,7 +496,7 @@ func (b *Backend) InstallSdk(sdkSubpath string, version string) error {
 	return nil
 }
 
-func (b *Backend) AddApprovedOauthToken(name string, token string) error {
+func (b *Backend) AddApprovedOauthToken(token string) error {
 	if b.debug {
 		log.Printf("[native] addApprovedOauthToken (no-op)")
 	}
