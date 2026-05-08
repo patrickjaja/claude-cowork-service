@@ -4,8 +4,8 @@
 # Usage: build-pkg.sh [--install] <binary_path> <version> [arch]
 #
 # Creates claude-cowork-service-<version>-1-<arch>.pkg.tar.zst in the current
-# directory. The package contains the pre-built static Go binary + systemd
-# user service.
+# directory. The package contains the pre-built Go binary, the matching
+# sandbox-runtime `srt` binary, and the systemd user service.
 #
 # arch defaults to "x86_64". Pass "aarch64" for ARM64 builds.
 #
@@ -42,10 +42,23 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
-command -v makepkg >/dev/null 2>&1 || { echo "ERROR: makepkg not found (install pacman/pkgbuild tools)"; exit 1; }
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+case "$TARGET_ARCH" in
+    x86_64)  SRT_ARCH="amd64" ;;
+    aarch64) SRT_ARCH="arm64" ;;
+    *) echo "ERROR: Unsupported arch for srt: $TARGET_ARCH"; exit 1 ;;
+esac
+SRT_BINARY="${SRT_BINARY:-$REPO_ROOT/srt/srt-linux-$SRT_ARCH}"
+if [ ! -f "$SRT_BINARY" ]; then
+    echo "ERROR: SRT binary not found: $SRT_BINARY"
+    echo "       Run: make build-srt"
+    exit 1
+fi
+
+command -v makepkg >/dev/null 2>&1 || { echo "ERROR: makepkg not found (install pacman/pkgbuild tools)"; exit 1; }
+
 OUT_DIR="$(pwd)"
 
 WORK_DIR="$(mktemp -d)"
@@ -55,6 +68,7 @@ echo "=== Building claude-cowork-service pacman package ==="
 
 # Stage source files alongside PKGBUILD so makepkg can pick them up via local source=()
 cp "$BINARY"                              "$WORK_DIR/cowork-svc-linux"
+cp "$SRT_BINARY"                          "$WORK_DIR/srt-cowork"
 cp "$REPO_ROOT/claude-cowork.service"     "$WORK_DIR/claude-cowork.service"
 cp "$REPO_ROOT/LICENSE"                   "$WORK_DIR/LICENSE"
 cp "$REPO_ROOT/claude-cowork-service.install" "$WORK_DIR/claude-cowork-service.install"
@@ -71,17 +85,26 @@ url="https://github.com/patrickjaja/claude-cowork-service"
 license=('MIT')
 depends=('systemd' 'util-linux')
 optdepends=('claude-desktop-bin: Unofficial Linux frontend for Claude Desktop Cowork'
-            'claude-code: An agentic coding tool that lives in your terminal')
+            'claude-code: An agentic coding tool that lives in your terminal'
+            'bubblewrap: Required for sandbox backend (filesystem/network isolation)'
+            'socat: Required for sandbox backend (network bridge)'
+            'ripgrep: Required for sandbox backend (dangerous file detection)')
+# srt-cowork is a bun-compiled executable with its JS payload appended at the
+# end of the file; stripping or producing a debug split corrupts that payload
+# and the binary degrades into vanilla bun (printing the bun help text).
+options=('!strip' '!debug')
 install="claude-cowork-service.install"
 
 source=('cowork-svc-linux'
+        'srt-cowork'
         'claude-cowork.service'
         'LICENSE'
         'claude-cowork-service.install')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     install -Dm755 "\$srcdir/cowork-svc-linux"          "\$pkgdir/usr/bin/cowork-svc-linux"
+    install -Dm755 "\$srcdir/srt-cowork"                "\$pkgdir/usr/bin/srt-cowork"
     install -Dm644 "\$srcdir/claude-cowork.service"     "\$pkgdir/usr/lib/systemd/user/claude-cowork.service"
     install -Dm644 "\$srcdir/LICENSE"                   "\$pkgdir/usr/share/licenses/\$pkgname/LICENSE"
 }

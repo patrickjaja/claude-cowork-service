@@ -26,6 +26,18 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+case "$TARGET_ARCH" in
+    x86_64)  SRT_ARCH="amd64" ;;
+    aarch64) SRT_ARCH="arm64" ;;
+    *) echo "ERROR: Unsupported arch for srt: $TARGET_ARCH"; exit 1 ;;
+esac
+SRT_BINARY="${SRT_BINARY:-$REPO_ROOT/srt/srt-linux-$SRT_ARCH}"
+if [ ! -f "$SRT_BINARY" ]; then
+    echo "ERROR: SRT binary not found: $SRT_BINARY"
+    echo "       Run: make build-srt"
+    exit 1
+fi
+
 # Create rpmbuild directory structure
 WORK_DIR=$(mktemp -d)
 RPM_BUILD="$WORK_DIR/rpmbuild"
@@ -37,6 +49,7 @@ echo "=== Building claude-cowork-service RPM ==="
 
 # Copy binary and service file to SOURCES
 cp "$BINARY" "$RPM_BUILD/SOURCES/cowork-svc-linux"
+cp "$SRT_BINARY" "$RPM_BUILD/SOURCES/srt-cowork"
 cp "$REPO_ROOT/claude-cowork.service" "$RPM_BUILD/SOURCES/"
 
 # Copy spec file

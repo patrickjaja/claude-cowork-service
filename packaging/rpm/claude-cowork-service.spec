@@ -1,5 +1,10 @@
 %define _build_id_links none
 %global debug_package %{nil}
+# srt-cowork is a bun-compiled executable with its JS payload appended at the
+# end of the file; rpmbuild's default brp-strip / brp-strip-static-archive
+# would clip that payload and degrade the binary into vanilla bun.
+# Skip all post-install binary processing.
+%global __os_install_post %{nil}
 
 Name:           claude-cowork-service
 Version:        %{pkg_version}
@@ -12,6 +17,9 @@ URL:            https://github.com/patrickjaja/claude-cowork-service
 ExclusiveArch:  x86_64 aarch64
 
 Requires:       systemd
+Requires:       bubblewrap
+Requires:       socat
+Requires:       ripgrep
 
 %description
 Reverse-engineered from Windows cowork-svc.exe. Implements the
@@ -24,6 +32,7 @@ rm -rf %{buildroot}
 # Install binary
 mkdir -p %{buildroot}/usr/bin
 install -m755 %{_sourcedir}/cowork-svc-linux %{buildroot}/usr/bin/cowork-svc-linux
+install -m755 %{_sourcedir}/srt-cowork %{buildroot}/usr/bin/srt-cowork
 
 # Install systemd user service
 mkdir -p %{buildroot}/usr/lib/systemd/user
@@ -40,4 +49,5 @@ echo ""
 
 %files
 /usr/bin/cowork-svc-linux
+/usr/bin/srt-cowork
 /usr/lib/systemd/user/claude-cowork.service

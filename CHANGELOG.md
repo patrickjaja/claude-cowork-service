@@ -4,6 +4,9 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Added
+- **`network.allowAllUnixSockets` option in sandbox config** (`sandbox/backend.go`, `sandbox/config.go`) — opt-in flag, plumbed through to `srt-cowork`'s native `network.allowAllUnixSockets` field. When set in `~/.config/claude-cowork-service/sandbox.yaml`, sandboxed sessions can connect to host Unix sockets (Docker daemon, ssh-agent, etc.). Disabled by default for safety; the JSON tag uses `omitempty` so the field is only emitted when on, preserving SRT's secure default. The companion `allowUnixSockets` path-allowlist from upstream is intentionally not exposed because it is documented as macOS-only — Linux's seccomp cannot filter sockets by path, so the flag is all-or-nothing on this platform.
+
 ### Fixed
 - `isProcessRunning` response now includes `exitCode` field alongside `running` - Desktop expects both fields for process health monitoring
 

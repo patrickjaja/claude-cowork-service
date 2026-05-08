@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -58,6 +57,66 @@ func newProcessTracker(emit func(event interface{}), debug bool) *processTracker
 	}
 }
 
+func resolveExecutable(cmd string, debug bool) string {
+	// If the given path doesn't exist, try to find it in PATH.
+	// Systemd services have minimal PATH (/usr/local/bin:/usr/bin), so we use
+	// multi-stage shell-based fallbacks to locate binaries installed in
+	// user-specific locations (npm global, ~/.local/bin, nvm, etc.).
+	if _, err := os.Stat(cmd); err == nil {
+		return cmd
+	}
+
+	base := filepath.Base(cmd)
+	resolved := ""
+
+	// Stage 1: exec.LookPath — checks current process PATH
+	if r, lookErr := exec.LookPath(base); lookErr == nil {
+		resolved = r
+	}
+
+	// Stage 2: login shell — bash -lc loads ~/.bash_profile / ~/.profile
+	if resolved == "" {
+		if out, err := exec.Command("bash", "-lc", "which "+base).Output(); err == nil {
+			r := filepath.Clean(string(bytes.TrimSpace(out)))
+			if _, err := os.Stat(r); err == nil {
+				resolved = r
+			}
+		}
+	}
+
+	// Stage 3: interactive login shell — loads ~/.bashrc too (PATH additions
+	// are often in .bashrc behind an interactive guard: [[ $- != *i* ]] && return).
+	// Output may include shell init noise (fastfetch, motd, etc.), so we parse
+	// all lines for an absolute path that exists on disk.
+	if resolved == "" {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "bash"
+		}
+		if out, err := exec.Command(shell, "-lic", "command -v "+base).Output(); err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "/") && !strings.ContainsAny(line, " \t") {
+					if _, err := os.Stat(line); err == nil {
+						resolved = line
+					}
+				}
+			}
+		}
+	}
+
+	if resolved != "" {
+		if debug {
+			log.Printf("[native] resolved %s → %s", cmd, resolved)
+		}
+		return resolved
+	}
+	if debug {
+		log.Printf("[native] WARNING: could not resolve %s in any fallback stage", cmd)
+	}
+	return cmd
+}
+
 // spawn starts a new process and streams its stdout/stderr via events.
 func (pt *processTracker) spawn(id string, cmd string, args []string, env map[string]string, cwd string, vmPrefix string, realPrefix string, mountRemap []pathRemap, reverseMountRemap []pathRemap) (string, error) {
 	if id == "" {
@@ -67,59 +126,7 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 		pt.mu.Unlock()
 	}
 
-	// If the given path doesn't exist, try to find it in PATH.
-	// Systemd services have minimal PATH (/usr/local/bin:/usr/bin), so we use
-	// multi-stage shell-based fallbacks to locate binaries installed in
-	// user-specific locations (npm global, ~/.local/bin, nvm, etc.).
-	if _, err := os.Stat(cmd); err != nil {
-		base := filepath.Base(cmd)
-		resolved := ""
-
-		// Stage 1: exec.LookPath — checks current process PATH
-		if r, lookErr := exec.LookPath(base); lookErr == nil {
-			resolved = r
-		}
-
-		// Stage 2: login shell — bash -lc loads ~/.bash_profile / ~/.profile
-		if resolved == "" {
-			if out, err := exec.Command("bash", "-lc", "which "+base).Output(); err == nil {
-				r := filepath.Clean(string(bytes.TrimSpace(out)))
-				if _, err := os.Stat(r); err == nil {
-					resolved = r
-				}
-			}
-		}
-
-		// Stage 3: interactive login shell — loads ~/.bashrc too (PATH additions
-		// are often in .bashrc behind an interactive guard: [[ $- != *i* ]] && return).
-		// Output may include shell init noise (fastfetch, motd, etc.), so we parse
-		// all lines for an absolute path that exists on disk.
-		if resolved == "" {
-			shell := os.Getenv("SHELL")
-			if shell == "" {
-				shell = "bash"
-			}
-			if out, err := exec.Command(shell, "-lic", "command -v "+base).Output(); err == nil {
-				for _, line := range strings.Split(string(out), "\n") {
-					line = strings.TrimSpace(line)
-					if strings.HasPrefix(line, "/") && !strings.ContainsAny(line, " \t") {
-						if _, err := os.Stat(line); err == nil {
-							resolved = line
-						}
-					}
-				}
-			}
-		}
-
-		if resolved != "" {
-			if pt.debug {
-				log.Printf("[native] resolved %s → %s", cmd, resolved)
-			}
-			cmd = resolved
-		} else if pt.debug {
-			log.Printf("[native] WARNING: could not resolve %s in any fallback stage", cmd)
-		}
-	}
+	cmd = resolveExecutable(cmd, pt.debug)
 
 	c := exec.Command(cmd, args...)
 	if cwd != "" {
@@ -271,35 +278,53 @@ func (pt *processTracker) spawn(id string, cmd string, args []string, env map[st
 func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 	// Look up process for reverse path mapping
 	pt.mu.RLock()
-	lp := pt.processes[id]
 	pt.mu.RUnlock()
 
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024) // 10MB max for large Opus stream-json lines
+	filterSRTDebugContinuation := false
+	srtDebugBraceDepth := 0
 	for scanner.Scan() {
 		line := scanner.Text() + "\n"
+
+		if stream == "stderr" {
+			if filterSRTDebugContinuation {
+				log.Printf("[native] %s srt-debug: %s", id, logx.Trunc(line))
+				srtDebugBraceDepth += jsonBraceDelta(line)
+				if srtDebugBraceDepth <= 0 {
+					filterSRTDebugContinuation = false
+				}
+				continue
+			}
+			if payload, ok := sandboxRuntimeDebugPayload(line); ok {
+				log.Printf("[native] %s srt-debug: %s", id, logx.Trunc(line))
+				srtDebugBraceDepth = jsonBraceDelta(payload)
+				filterSRTDebugContinuation = strings.HasPrefix(strings.TrimSpace(payload), "{") && srtDebugBraceDepth > 0
+				continue
+			}
+		}
 
 		// Remap real paths → VM paths in output (only when /sessions/ is accessible).
 		// Without this guard, native Linux (no root) would produce /sessions/ paths
 		// that don't exist, causing the model's subsequent bash commands to fail.
-		if lp != nil && lp.reverseMap {
-			// Mount-level first (more specific): real mount target → VM mount path
-			for _, rm := range lp.reverseMountRemap {
-				line = string(bytes.ReplaceAll([]byte(line), rm.from, rm.to))
-			}
-			// Session-level: real session prefix → VM session prefix
-			line = string(bytes.ReplaceAll([]byte(line), lp.realPrefix, lp.vmPrefix))
-		}
+		//if lp != nil && lp.reverseMap {
+		//	// Mount-level first (more specific): real mount target → VM mount path
+		//	for _, rm := range lp.reverseMountRemap {
+		//		line = string(bytes.ReplaceAll([]byte(line), rm.from, rm.to))
+		//	}
+		//	// Session-level: real session prefix → VM session prefix
+		//	line = string(bytes.ReplaceAll([]byte(line), lp.realPrefix, lp.vmPrefix))
+		//}
 
 		// Intercept present_files MCP calls and handle locally on native Linux.
 		// Desktop's present_files validates paths against VM mounts, which fails
 		// for native Linux paths. Since there's no VM boundary, we just verify
 		// the files exist and return success directly to the CLI.
-		if lp != nil && (strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`)) {
-			if handled := pt.tryHandlePresentFiles(lp, line); handled {
-				continue // don't forward to Desktop
-			}
-		}
+		//if lp != nil && (strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`)) {
+		//	if handled := pt.tryHandlePresentFiles(lp, line); handled {
+		//		continue // don't forward to Desktop
+		//	}
+		//}
 
 		// Detect MCP control_request messages from the CLI.
 		if pt.debug && (strings.Contains(line, `"type":"control_request"`) || strings.Contains(line, `"type": "control_request"`)) {
@@ -324,6 +349,15 @@ func (pt *processTracker) streamOutput(id string, r io.Reader, stream string) {
 		log.Printf("[native] %s %s scanner error: %v", id, stream, err)
 		pt.emit(process.NewErrorEvent(id, fmt.Sprintf("%s scanner error: %v", stream, err), false))
 	}
+}
+
+func sandboxRuntimeDebugPayload(line string) (string, bool) {
+	payload, ok := strings.CutPrefix(line, "[SandboxDebug]")
+	return payload, ok
+}
+
+func jsonBraceDelta(line string) int {
+	return strings.Count(line, "{") - strings.Count(line, "}")
 }
 
 // tryHandlePresentFiles intercepts mcp__cowork__present_files control_requests
@@ -577,16 +611,16 @@ func (pt *processTracker) writeStdin(processID string, data []byte) error {
 	}
 
 	// Remap VM paths to real paths in stdin data
-	if lp.vmPrefix != nil {
-		data = bytes.ReplaceAll(data, lp.vmPrefix, lp.realPrefix)
-	}
+	//if lp.vmPrefix != nil {
+	//	data = bytes.ReplaceAll(data, lp.vmPrefix, lp.realPrefix)
+	//}
 
 	// Remap session/mnt/<mount> paths to real mount targets.
 	// Glob doesn't follow directory symlinks, so the model must see
 	// the real target paths instead of symlinked mnt/ paths.
-	for _, rm := range lp.mountRemap {
-		data = bytes.ReplaceAll(data, rm.from, rm.to)
-	}
+	//for _, rm := range lp.mountRemap {
+	//	data = bytes.ReplaceAll(data, rm.from, rm.to)
+	//}
 
 	// Detect MCP control_response messages from Claude Desktop.
 	// These are JSON objects with "type":"control_response" sent by Desktop's
@@ -606,15 +640,15 @@ func (pt *processTracker) writeStdin(processID string, data []byte) error {
 	// just "/pdf ..." (bare skill name). The plugin prefix in the UI
 	// (from marketplace.json) doesn't match the CLI's plugin.json name,
 	// so we strip it to let the CLI resolve by userFacingName().
-	if bytes.Contains(data, []byte(`"content":"/`)) {
-		re := regexp.MustCompile(`"content":"/[a-zA-Z0-9_-]+:`)
-		if re.Match(data) {
-			if pt.debug {
-				log.Printf("[native] stripping skill plugin prefix from user message")
-			}
-			data = re.ReplaceAll(data, []byte(`"content":"/`))
-		}
-	}
+	//if bytes.Contains(data, []byte(`"content":"/`)) {
+	//	re := regexp.MustCompile(`"content":"/[a-zA-Z0-9_-]+:`)
+	//	if re.Match(data) {
+	//		if pt.debug {
+	//			log.Printf("[native] stripping skill plugin prefix from user message")
+	//		}
+	//		data = re.ReplaceAll(data, []byte(`"content":"/`))
+	//	}
+	//}
 
 	// Check if process already exited
 	select {

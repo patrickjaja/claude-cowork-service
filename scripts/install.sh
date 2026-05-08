@@ -12,8 +12,10 @@ set -euo pipefail
 
 REPO="patrickjaja/claude-cowork-service"
 BINARY_NAME="cowork-svc-linux"
+SRT_NAME="srt-cowork"
 SERVICE_NAME="claude-cowork"
 DOWNLOAD_NAME=""  # set by arch detection below
+SRT_DOWNLOAD_NAME=""  # set by arch detection below
 
 # Colors (disabled if not a terminal)
 if [ -t 1 ]; then
@@ -61,6 +63,7 @@ else
 fi
 
 BINARY_PATH="$INSTALL_DIR/$BINARY_NAME"
+SRT_PATH="$INSTALL_DIR/$SRT_NAME"
 SERVICE_DIR="$HOME/.config/systemd/user"
 SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
 
@@ -87,18 +90,21 @@ do_uninstall() {
     fi
 
     # Remove binary
-    if [ -f "$BINARY_PATH" ]; then
-        if [ -w "$BINARY_PATH" ] || [ -w "$(dirname "$BINARY_PATH")" ]; then
-            rm -f "$BINARY_PATH"
-        else
-            sudo rm -f "$BINARY_PATH"
+    for installed_path in "$BINARY_PATH" "$SRT_PATH"; do
+        if [ ! -f "$installed_path" ]; then
+            continue
         fi
-        ok "Removed $BINARY_PATH"
-    fi
+        if [ -w "$installed_path" ] || [ -w "$(dirname "$installed_path")" ]; then
+            rm -f "$installed_path"
+        else
+            sudo rm -f "$installed_path"
+        fi
+        ok "Removed $installed_path"
+    done
 
     # Also check the other common location
-    for path in /usr/local/bin/$BINARY_NAME "$HOME/.local/bin/$BINARY_NAME"; do
-        if [ -f "$path" ] && [ "$path" != "$BINARY_PATH" ]; then
+    for path in /usr/local/bin/$BINARY_NAME "$HOME/.local/bin/$BINARY_NAME" /usr/local/bin/$SRT_NAME "$HOME/.local/bin/$SRT_NAME"; do
+        if [ -f "$path" ] && [ "$path" != "$BINARY_PATH" ] && [ "$path" != "$SRT_PATH" ]; then
             warn "Found binary also at $path — remove manually if unwanted"
         fi
     done
@@ -115,11 +121,17 @@ fi
 
 ARCH="$(uname -m)"
 case "$ARCH" in
-    x86_64)  DOWNLOAD_NAME="cowork-svc-linux" ;;
-    aarch64) DOWNLOAD_NAME="cowork-svc-linux-arm64" ;;
+    x86_64)
+        DOWNLOAD_NAME="cowork-svc-linux"
+        SRT_DOWNLOAD_NAME="srt-linux-amd64"
+        ;;
+    aarch64)
+        DOWNLOAD_NAME="cowork-svc-linux-arm64"
+        SRT_DOWNLOAD_NAME="srt-linux-arm64"
+        ;;
     *) die "Unsupported architecture: $ARCH (supported: x86_64, aarch64)" ;;
 esac
-info "Detected architecture: $ARCH (downloading $DOWNLOAD_NAME)"
+info "Detected architecture: $ARCH (downloading $DOWNLOAD_NAME and $SRT_DOWNLOAD_NAME)"
 
 command -v systemctl >/dev/null 2>&1 || die "systemd is required (systemctl not found)"
 
@@ -153,6 +165,7 @@ VERSION="${RELEASE_URL##*/}"
 info "Latest version: $VERSION"
 
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$VERSION/$DOWNLOAD_NAME"
+SRT_DOWNLOAD_URL="https://github.com/$REPO/releases/download/$VERSION/$SRT_DOWNLOAD_NAME"
 
 # --- Download binary ---
 
@@ -160,6 +173,7 @@ TMPDIR_INSTALL="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_INSTALL"' EXIT
 
 TMPFILE="$TMPDIR_INSTALL/$BINARY_NAME"
+SRT_TMPFILE="$TMPDIR_INSTALL/$SRT_NAME"
 
 info "Downloading $DOWNLOAD_NAME $VERSION..."
 if [ "$FETCH" = "curl" ]; then
@@ -171,18 +185,31 @@ fi
 chmod +x "$TMPFILE"
 ok "Downloaded $DOWNLOAD_NAME as $BINARY_NAME"
 
+info "Downloading $SRT_DOWNLOAD_NAME $VERSION..."
+if [ "$FETCH" = "curl" ]; then
+    curl -fSL --progress-bar -o "$SRT_TMPFILE" "$SRT_DOWNLOAD_URL" || die "SRT download failed"
+else
+    wget -q --show-progress -O "$SRT_TMPFILE" "$SRT_DOWNLOAD_URL" || die "SRT download failed"
+fi
+
+chmod +x "$SRT_TMPFILE"
+ok "Downloaded $SRT_DOWNLOAD_NAME as $SRT_NAME"
+
 # --- Install binary ---
 
 mkdir -p "$INSTALL_DIR"
 
 if [ -w "$INSTALL_DIR" ]; then
     mv "$TMPFILE" "$BINARY_PATH"
+    mv "$SRT_TMPFILE" "$SRT_PATH"
 else
     info "Installing to $INSTALL_DIR (requires sudo)..."
     sudo mv "$TMPFILE" "$BINARY_PATH"
+    sudo mv "$SRT_TMPFILE" "$SRT_PATH"
 fi
 
 ok "Installed $BINARY_PATH"
+ok "Installed $SRT_PATH"
 
 # --- Create systemd user service ---
 
@@ -194,6 +221,7 @@ Description=Claude Cowork Service (native Linux backend)
 After=default.target
 
 [Service]
+Environment=PATH=$INSTALL_DIR:/usr/local/bin:/usr/bin:/bin
 ExecStart=$BINARY_PATH
 Restart=on-failure
 RestartSec=5

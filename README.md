@@ -80,8 +80,8 @@ Updates arrive through your AUR helper (e.g. `yay -Syu`).
 > so you need to declare it explicitly via `extraPath`:
 >
 > ```nix
-> # Claude Code installed via npm global:
-> services.claude-cowork.extraPath = [ pkgs.nodejs "/path/to/directory/containing/claude" ];
+> # Claude Code installed via Bun global:
+> services.claude-cowork.extraPath = [ pkgs.bun "/path/to/directory/containing/claude" ];
 >
 > # Claude Code available as a Nix package:
 > services.claude-cowork.extraPath = [ pkgs.claude-code ];
@@ -158,8 +158,10 @@ systemctl --user enable --now claude-cowork
 |----------|-----------|-------|
 | **Runtime** | systemd | User service management (`systemctl --user`) |
 | **Runtime** | bash | Binary resolution in launcher scripts |
-| **Required** | Claude Code CLI | `claude` binary must be in `$PATH` - `npm i -g @anthropic-ai/claude-code` recommended (always latest); declared as `optdepends` in packaging so you control the version |
+| **Required** | Claude Code CLI | `claude` binary must be in `$PATH` - `bun add --global @anthropic-ai/claude-code` recommended (always latest); declared as `optdepends` in packaging so you control the version |
 | **Optional** | socat | Socket health check fallback |
+| **Sandbox mode** | `srt` | Packaged installs include the service's sandbox-runtime fork as `/usr/bin/srt`; source installs can build it with `make build-srt` |
+| **Sandbox mode** | bubblewrap, socat, ripgrep | Linux dependencies used by sandbox-runtime (`bwrap`, `socat`, `rg`) |
 | **KVM mode** | qemu-system-x86_64 | QEMU system emulator (only for `COWORK_VM_BACKEND=kvm`) |
 | **KVM mode** | virtiofsd | Virtio filesystem daemon - packaged separately on most distros |
 | **KVM mode** | /dev/kvm | KVM kernel module (`kvm`, `kvm_intel` or `kvm_amd`) |
@@ -175,13 +177,13 @@ The packaging intentionally declares Claude Code as an **optional dependency** (
 **Recommended install** (always gets the latest version):
 
 ```bash
-npm i -g @anthropic-ai/claude-code
+bun add --global @anthropic-ai/claude-code
 ```
 
 Alternative methods:
 
-- **AUR:** `yay -S claude-code` (version may lag behind npm)
-- **Nix:** `nix-env -iA nixpkgs.claude-code` (version may lag behind npm)
+- **AUR:** `yay -S claude-code` (version may lag behind the registry release)
+- **Nix:** `nix-env -iA nixpkgs.claude-code` (version may lag behind the registry release)
 
 As long as the `claude` binary is on your `$PATH`, the daemon will find it.
 
@@ -233,7 +235,7 @@ cowork-svc-linux -debug
 
 ## How It Works
 
-The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` (native) or `cowork-kvm-service.sock` (KVM) and handles 22 RPC methods:
+The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` (native), `cowork-sandbox-service.sock` (sandbox), or `cowork-kvm-service.sock` (KVM) and handles 22 RPC methods:
 
 | Method | What it does |
 |--------|-------------|
@@ -243,7 +245,7 @@ The daemon listens on `$XDG_RUNTIME_DIR/cowork-vm-service.sock` (native) or `cow
 | `stopVM` | Kills all spawned processes, cleans up |
 | `isRunning` | Returns `true` after startVM |
 | `isGuestConnected` | Returns `true` after startVM |
-| `spawn` | Runs command via `os/exec` on host |
+| `spawn` | Runs command via `os/exec` on host, optionally wrapped by `srt` in sandbox mode |
 | `kill` | Kills a spawned process (supports signal: SIGTERM, SIGKILL, etc.) |
 | `writeStdin` | Writes data to a process's stdin |
 | `isProcessRunning` | Checks if a process is alive |
@@ -302,6 +304,10 @@ The JS patches in claude-desktop-bin that enable Cowork on Linux are:
 │  Native backend (default):  │
 │  └─ os/exec on host         │
 │                             │
+│  Sandbox backend:           │
+│  └─ sandbox-runtime (srt)   │
+│     └─ os/exec on host      │
+│                             │
 │  KVM backend (experimental):│
 │  └─ QEMU/KVM VM             │
 │     └─ sdk-daemon (vsock)   │
@@ -313,6 +319,7 @@ Compare to Windows/macOS:
 Claude Desktop → cowork-svc.exe   → Hyper-V VM → sdk-daemon (vsock)
 Claude Desktop → cowork-svc       → Apple VM   → sdk-daemon (vsock)
 Claude Desktop → cowork-svc-linux → direct host execution (native, default)
+Claude Desktop → cowork-svc-linux → sandbox-runtime → host process (sandbox mode)
 Claude Desktop → cowork-svc-linux → QEMU/KVM VM → sdk-daemon (vsock, KVM mode)
 ```
 
@@ -423,9 +430,49 @@ grep 'present_files handled' /tmp/cowork-debug.log
 grep 'stripping --disallowedTools' /tmp/cowork-debug.log
 ```
 
+## Sandbox Backend (Experimental)
+
+The sandbox backend keeps the native Linux protocol flow, but wraps each spawned Claude Code process with Anthropic's [sandbox-runtime](https://github.com/anthropic-experimental/sandbox-runtime). It uses Desktop's `allowedDomains` spawn field for network egress and the session's mount modes for filesystem write access.
+
+### Enabling sandbox mode
+
+Packaged installs place the matching sandbox-runtime executable at `/usr/bin/srt`. For source builds:
+
+```bash
+make build-srt
+sudo install -Dm755 srt/srt-linux-amd64 /usr/local/bin/srt
+
+# Or build both release inputs in a throwaway Docker container
+./scripts/build-srt-docker.sh
+
+# Via CLI flag
+./cowork-svc-linux -backend=sandbox
+
+# Via environment variable
+COWORK_VM_BACKEND=sandbox ./cowork-svc-linux
+
+# If srt is not on PATH
+./cowork-svc-linux -backend=sandbox -sandbox-srt=/path/to/srt
+```
+
+The backend builds one sandbox-runtime config per spawned process and passes it inline:
+
+```bash
+srt --config-json-base64 <config> -c 'cd /sessions/<name>/mnt/<workspace> && exec <claude command>'
+```
+
+The sandbox backend writes a customizable baseline policy to `~/.config/claude-cowork-service/sandbox.yaml` on first use, or to `COWORK_SANDBOX_CONFIG` when that environment variable is set. The daemon merges that baseline with each spawn: Desktop's `allowedDomains` extend `network.allowedDomains`, and session mounts extend `linux.bindMounts`. The generated default hides host data roots such as `/home`, gives `/tmp` and `/var/tmp` private writable tmpfs mounts, and re-allows `/var/lib` for system state that many tools expect. Edit the YAML file to adapt those defaults for the local system.
+
+This repo carries a `sandbox-runtime` submodule fork with two Linux extensions the backend uses:
+
+- `--config-json-base64`, so the daemon can pass the full per-spawn config without writing a settings file.
+- `linux.bindMounts`, so the sandbox can expose KVM-like paths such as `/sessions/<name>/mnt/<mount>` and `/mnt/.virtiofs-root/shared/<host-path>`.
+
+Sandbox mode listens on `$XDG_RUNTIME_DIR/cowork-sandbox-service.sock`, so it can coexist with native and KVM daemons. Claude Desktop must be patched to probe the sandbox socket when using this mode.
+
 ## KVM Backend (Experimental)
 
-Alongside the default native backend, the daemon includes a real QEMU/KVM backend that runs Cowork sessions inside a virtual machine - matching the sandboxed execution model used on macOS and Windows. The default remains native mode; existing users are unaffected.
+Alongside the native and sandbox backends, the daemon includes a real QEMU/KVM backend that runs Cowork sessions inside a virtual machine - matching the sandboxed execution model used on macOS and Windows. The default remains native mode; existing users are unaffected.
 
 ### Enabling KVM mode
 
@@ -465,7 +512,9 @@ Available environment variables:
 
 | Variable | Values | Default | Description |
 |----------|--------|---------|-------------|
-| `COWORK_VM_BACKEND` | `native`, `kvm` | `native` | Backend selection. `native` runs commands directly on the host (no VM). `kvm` runs sessions inside a QEMU/KVM virtual machine. |
+| `COWORK_VM_BACKEND` | `native`, `sandbox`, `kvm` | `native` | Backend selection. `native` runs commands directly on the host. `sandbox` wraps host commands with sandbox-runtime. `kvm` runs sessions inside a QEMU/KVM virtual machine. |
+| `COWORK_SANDBOX_SRT` | path | `srt` | sandbox-runtime CLI path used by the sandbox backend. |
+| `COWORK_SANDBOX_CONFIG` | path | `$XDG_CONFIG_HOME/claude-cowork-service/sandbox.yaml` | Editable sandbox baseline policy merged with each sandbox backend spawn. |
 | `COWORK_LOG_FULL` | `1` | *(unset)* | Disable log line truncation (useful for debugging RPC payloads) |
 
 ### Prerequisites
@@ -480,7 +529,7 @@ Available environment variables:
 
 ### Socket path
 
-KVM mode listens on `$XDG_RUNTIME_DIR/cowork-kvm-service.sock`, separate from the native backend's `cowork-vm-service.sock`. This means both backends can coexist on the same machine. Claude Desktop must be patched to probe the KVM socket when using this mode.
+KVM mode listens on `$XDG_RUNTIME_DIR/cowork-kvm-service.sock`, separate from the native backend's `cowork-vm-service.sock` and the sandbox backend's `cowork-sandbox-service.sock`. This means all backends can coexist on the same machine. Claude Desktop must be patched to probe the KVM socket when using this mode.
 
 ### Architecture
 

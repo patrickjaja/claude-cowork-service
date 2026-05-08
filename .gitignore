@@ -13,5 +13,6 @@ bin/
 vm-bundle/
 .vm-analysis/
 dist/
+srt/
 tmpmnt
 .codex

@@ -66,11 +66,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26'
           cache: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Vet
         run: go vet ./...
@@ -86,6 +92,9 @@ jobs:
       - name: Cross-compile ARM64
         run: make build-arm64
 
+      - name: Build sandbox-runtime (srt) executables
+        run: make build-srt
+
       - name: Test
         run: go test ./...
 
@@ -95,12 +104,17 @@ jobs:
         run: |
           # Build using local source instead of fetchFromGitHub.
           # The flake's package.nix uses fetchFromGitHub for end users;
-          # in CI we override src to the flake's own git-tracked source tree.
+          # in CI we override src to the flake's own git-tracked source tree
+          # and pass the generated SRT binaries as an explicit source input.
           nix build --no-link --print-build-logs --impure --expr '
-            let flake = builtins.getFlake (toString ./.);
-            in flake.packages.x86_64-linux.claude-cowork-service.overrideAttrs {
-              src = flake.outPath;
-            }
+            let
+              flake = builtins.getFlake (toString ./.);
+              localPkg = (flake.packages.x86_64-linux.claude-cowork-service.override {
+                srtBinaries = ./srt;
+              }).overrideAttrs {
+                src = flake.outPath;
+              };
+            in localPkg
           '
       - name: Test NixOS module evaluation
         run: |
@@ -110,7 +124,9 @@ jobs:
             let
               flake = builtins.getFlake (toString ./.);
               pkgs = flake.inputs.nixpkgs.legacyPackages.x86_64-linux;
-              localPkg = flake.packages.x86_64-linux.claude-cowork-service.overrideAttrs {
+              localPkg = (flake.packages.x86_64-linux.claude-cowork-service.override {
+                srtBinaries = ./srt;
+              }).overrideAttrs {
                 src = flake.outPath;
               };
             in pkgs.callPackage ./packaging/nix/module-test.nix {
@@ -133,11 +149,16 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
+          submodules: recursive
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26'
           cache: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Update CHANGELOG and create tag (workflow_dispatch only)
         if: github.event_name == 'workflow_dispatch'
@@ -174,10 +195,15 @@ jobs:
       - name: Build release binary (ARM64)
         run: make build-arm64 VERSION=${RELEASE_VERSION#v}
 
+      - name: Build sandbox-runtime (srt) executables
+        run: make build-srt
+
       - name: Generate checksums
         run: |
           sha256sum cowork-svc-linux > cowork-svc-linux.sha256
           sha256sum cowork-svc-linux-arm64 > cowork-svc-linux-arm64.sha256
+          sha256sum srt/srt-linux-amd64 > srt/srt-linux-amd64.sha256
+          sha256sum srt/srt-linux-arm64 > srt/srt-linux-arm64.sha256
 
       - name: Build Debian package (amd64)
         id: deb
@@ -262,6 +288,11 @@ jobs:
               dnf install -y /dist/test.rpm
               cowork-svc-linux -version
               test -f /usr/lib/systemd/user/claude-cowork.service
+              test -x /usr/bin/srt-cowork
+              # Guard against strip clipping bun's appended JS payload — a
+              # stripped binary still runs but degrades into vanilla bun.
+              srt-cowork --help 2>&1 | grep -q 'Run commands in a sandbox' \
+                || { echo 'srt-cowork is not the sandbox-runtime CLI (likely stripped)'; exit 1; }
               echo 'RPM x86_64 test passed'
             "
 
@@ -275,6 +306,11 @@ jobs:
               dnf install -y /dist/test.rpm
               cowork-svc-linux -version
               test -f /usr/lib/systemd/user/claude-cowork.service
+              test -x /usr/bin/srt-cowork
+              # Guard against strip clipping bun's appended JS payload — a
+              # stripped binary still runs but degrades into vanilla bun.
+              srt-cowork --help 2>&1 | grep -q 'Run commands in a sandbox' \
+                || { echo 'srt-cowork is not the sandbox-runtime CLI (likely stripped)'; exit 1; }
               echo 'RPM aarch64 test passed'
             "
 
@@ -289,6 +325,11 @@ jobs:
               apt-get install -y /dist/claude-cowork-service_*_arm64.deb
               cowork-svc-linux -version
               test -f /usr/lib/systemd/user/claude-cowork.service
+              test -x /usr/bin/srt-cowork
+              # Guard against strip clipping bun's appended JS payload — a
+              # stripped binary still runs but degrades into vanilla bun.
+              srt-cowork --help 2>&1 | grep -q 'Run commands in a sandbox' \
+                || { echo 'srt-cowork is not the sandbox-runtime CLI (likely stripped)'; exit 1; }
               echo 'DEB arm64 test passed'
             "
 
@@ -316,6 +357,10 @@ jobs:
             cowork-svc-linux.sha256
             cowork-svc-linux-arm64
             cowork-svc-linux-arm64.sha256
+            srt/srt-linux-amd64
+            srt/srt-linux-amd64.sha256
+            srt/srt-linux-arm64
+            srt/srt-linux-arm64.sha256
             ${{ steps.deb.outputs.deb_file }}
             ${{ steps.deb.outputs.deb_file }}.sha256
             ${{ steps.deb_arm64.outputs.deb_file }}
@@ -428,15 +473,19 @@ jobs:
       - name: Install Nix (for hash computation)
         uses: cachix/install-nix-action@v27
 
-      - name: Update Nix package hash
+      - name: Update Nix package hashes
         run: |
           VER="${RELEASE_VERSION#v}"
           URL="https://github.com/${{ github.repository }}/archive/${RELEASE_VERSION}.tar.gz"
           NAR_HASH=$(nix-prefetch-url --unpack --type sha256 "$URL" 2>/dev/null)
           NIX_HASH=$(nix hash to-sri --type sha256 "$NAR_HASH")
+          SRT_AMD64_HASH=$(nix hash file --type sha256 --sri srt/srt-linux-amd64)
+          SRT_ARM64_HASH=$(nix hash file --type sha256 --sri srt/srt-linux-arm64)
 
-          sed -i -E "s|version = \"[^\"]+\"|version = \"$VER\"|" packaging/nix/package.nix
+          sed -i -E "s|packageVersion = \"[^\"]+\"|packageVersion = \"$VER\"|" packaging/nix/package.nix
           sed -i -E "s|hash = \"sha256-[^\"]+\"|hash = \"$NIX_HASH\"|" packaging/nix/package.nix
+          sed -i -E "s|x86_64-linux = \"sha256-[^\"]+\"|x86_64-linux = \"$SRT_AMD64_HASH\"|" packaging/nix/package.nix
+          sed -i -E "s|aarch64-linux = \"sha256-[^\"]+\"|aarch64-linux = \"$SRT_ARM64_HASH\"|" packaging/nix/package.nix
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

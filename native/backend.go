@@ -44,17 +44,53 @@ type Backend struct {
 	memory  int
 	cpus    int
 
+	commandWrapper CommandWrapper
+
 	tracker     *processTracker
 	subscribers map[uint64]func(event interface{})
 	nextSubID   uint64
 	mu          sync.RWMutex
 }
 
+// BackendOptions controls optional behavior layered on top of the native
+// protocol implementation.
+type BackendOptions struct {
+	CommandWrapper CommandWrapper
+}
+
+// ResolvedMountSpec is a mount after home/root-relative path resolution.
+type ResolvedMountSpec struct {
+	Path string
+	Mode string
+}
+
+// SpawnContext contains the host-side session state available to command
+// wrappers.
+type SpawnContext struct {
+	Name           string
+	ID             string
+	SessionPrefix  string
+	RealSessionDir string
+	Mounts         map[string]pipe.MountSpec
+	ResolvedMounts map[string]ResolvedMountSpec
+	RawParams      []byte
+}
+
+// CommandWrapper may replace the final command that processTracker launches.
+// It runs after native path, env, and argument adaptation has completed.
+type CommandWrapper func(ctx SpawnContext, cmd string, args []string, env map[string]string, cwd string) (wrappedCmd string, wrappedArgs []string, wrappedEnv map[string]string, wrappedCwd string, err error)
+
 // NewBackend creates a native backend that runs processes on the host.
 func NewBackend(debug bool) *Backend {
+	return NewBackendWithOptions(debug, BackendOptions{})
+}
+
+// NewBackendWithOptions creates a native backend with optional launch behavior.
+func NewBackendWithOptions(debug bool, opts BackendOptions) *Backend {
 	b := &Backend{
-		debug:       debug,
-		subscribers: make(map[uint64]func(event interface{})),
+		debug:          debug,
+		commandWrapper: opts.CommandWrapper,
+		subscribers:    make(map[uint64]func(event interface{})),
 	}
 	b.tracker = newProcessTracker(b.emitEvent, debug)
 	return b
@@ -134,7 +170,7 @@ func (b *Backend) IsGuestConnected(name string) (bool, error) {
 	return true, nil
 }
 
-func (b *Backend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, _ []byte) (string, error) {
+func (b *Backend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, rawParams []byte) (string, error) {
 	if b.debug {
 		log.Printf("[native] spawn: %s %v (cwd=%s, mounts=%v)", cmd, args, cwd, mounts)
 	}
@@ -149,8 +185,13 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		return "", fmt.Errorf("creating session dir: %w", err)
 	}
 
+	resolvedMounts := make(map[string]ResolvedMountSpec, len(mounts))
 	for mountName, mount := range mounts {
 		hostPath := resolveSubpath(home, mount.Path)
+		resolvedMounts[mountName] = ResolvedMountSpec{
+			Path: hostPath,
+			Mode: mount.Mode,
+		}
 		// Skip mounts whose target is not a directory (e.g. app.asar).
 		// Claude Desktop passes every mount as --add-dir to the CLI,
 		// which rejects non-directory paths.
@@ -393,6 +434,24 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 			if b.debug {
 				log.Printf("[native] mount remap (rev): %s → %s", hostPath, vmMntPath)
 			}
+		}
+	}
+
+	if b.commandWrapper != nil {
+		cmd = resolveExecutable(cmd, b.debug)
+		ctx := SpawnContext{
+			Name:           name,
+			ID:             id,
+			SessionPrefix:  sessionPrefix,
+			RealSessionDir: realSessionDir,
+			Mounts:         mounts,
+			ResolvedMounts: resolvedMounts,
+			RawParams:      rawParams,
+		}
+		var err error
+		cmd, args, env, cwd, err = b.commandWrapper(ctx, cmd, args, env, cwd)
+		if err != nil {
+			return "", err
 		}
 	}
 

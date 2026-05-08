@@ -12,6 +12,7 @@ import (
 	"github.com/patrickjaja/claude-cowork-service/logx"
 	"github.com/patrickjaja/claude-cowork-service/native"
 	"github.com/patrickjaja/claude-cowork-service/pipe"
+	"github.com/patrickjaja/claude-cowork-service/sandbox"
 	"github.com/patrickjaja/claude-cowork-service/vm"
 )
 
@@ -32,8 +33,9 @@ func main() {
 
 	socketPath := flag.String("socket", "", "Unix socket path (default depends on backend)")
 	debug := flag.Bool("debug", false, "Enable debug logging")
-	backendName := flag.String("backend", defaultBackend(), "Backend: native or kvm")
+	backendName := flag.String("backend", defaultBackend(), "Backend: native, sandbox, or kvm")
 	bundlesDir := flag.String("bundles-dir", defaultBundlesDir(), "VM bundles directory (kvm backend only)")
+	sandboxSRT := flag.String("sandbox-srt", defaultSandboxSRT(), "sandbox-runtime srt binary path (sandbox backend only)")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	logFullLines := flag.Bool("log-full-lines", false, "Don't truncate long log lines (JSON payloads, RPC params, events)")
 	logMaxLen := flag.Int("log-max-len", 160, "Max characters per log line before truncation (ignored with -log-full-lines)")
@@ -58,6 +60,14 @@ func main() {
 	switch *backendName {
 	case "native":
 		backend = native.NewBackend(*debug)
+	case "sandbox":
+		check := sandbox.CheckPrerequisites(*sandboxSRT)
+		if !check.OK {
+			log.Fatalf("Sandbox backend unavailable: %s", check.Reason)
+		}
+		backend = sandbox.NewBackend(check.SRTPath, *debug)
+		log.Printf("Sandbox runtime: %s", check.SRTPath)
+		log.Printf("Sandbox config: %s", check.ConfigPath)
 	case "kvm":
 		check := vm.CheckKvmPrerequisites()
 		if !check.OK {
@@ -66,7 +76,7 @@ func main() {
 		backend = vm.NewKvmBackend(*bundlesDir, *debug)
 		log.Printf("Bundles dir: %s", *bundlesDir)
 	default:
-		log.Fatalf("Unknown backend %q (expected native or kvm)", *backendName)
+		log.Fatalf("Unknown backend %q (expected native, sandbox, or kvm)", *backendName)
 	}
 
 	server := pipe.NewServer(*socketPath, backend, *debug)
@@ -89,9 +99,12 @@ func main() {
 // exist in $XDG_RUNTIME_DIR. Native keeps the historical name for
 // compatibility with the Windows `cowork-vm-service` client.
 func defaultSocketPath(backend string) string {
-	name := "cowork-vm-service.sock"
-	if backend == "kvm" {
+	name := "cowork-sandbox-service.sock"
+	switch backend {
+	case "kvm":
 		name = "cowork-kvm-service.sock"
+	case "native":
+		name = "cowork-vm-service.sock"
 	}
 	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
 		return filepath.Join(xdg, name)
@@ -111,4 +124,11 @@ func defaultBackend() string {
 func defaultBundlesDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "Claude", "vm_bundles")
+}
+
+func defaultSandboxSRT() string {
+	if v := os.Getenv("COWORK_SANDBOX_SRT"); v != "" {
+		return v
+	}
+	return "srt-cowork"
 }
