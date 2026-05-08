@@ -7,6 +7,7 @@ All notable changes to claude-cowork-service will be documented in this file.
 ## 1.0.54 — 2026-05-07
 
 ### Changed
+- Updated upstream reference materials to Claude Desktop v1.6608.1 (rebuild-only release - no protocol, handler, or VM bundle changes vs 1.6608.0)
 - **Upstream update to Claude Desktop v1.6608.0** (from v1.6259.0)
 - **Operon/Conda notebook engine completely removed from Desktop** - Massive internal refactoring that dropped the build size by approximately 3 MB. All conda-related code paths, the `createDiskImage` RPC method, and the `mountConda` spawn parameter are gone from the Desktop codebase.
 - **`createDiskImage` RPC removed** - Desktop no longer sends this method. Our no-op handler remains for backward compatibility.
