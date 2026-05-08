@@ -9,10 +9,13 @@ arch=('x86_64' 'aarch64')
 url="https://github.com/patrickjaja/claude-cowork-service"
 license=('MIT')
 
-depends=('systemd' 'util-linux' 'bubblewrap' 'socat' 'ripgrep')
+depends=('systemd' 'util-linux')
 optdepends=('claude-desktop-bin: Unofficial Linux frontend for Claude Desktop Cowork'
-            'claude-code: An agentic coding tool that lives in your terminal (you can also install via native installer)')
-makedepends=('go' 'bun' 'zig' 'autoconf' 'automake' 'libtool' 'gperf')
+            'claude-code: An agentic coding tool that lives in your terminal (you can also install via native installer)'
+            'bubblewrap: Required for sandbox backend (filesystem/network isolation)'
+            'socat: Required for sandbox backend (network bridge)'
+            'ripgrep: Required for sandbox backend (dangerous file detection)')
+makedepends=('go' 'bun')
 
 # srt-cowork is a bun-compiled executable with its JS payload appended at the
 # end of the file; stripping or producing a debug split corrupts that payload

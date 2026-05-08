@@ -118,7 +118,7 @@ func defaultBackend() string {
 	if v := os.Getenv("COWORK_VM_BACKEND"); v != "" {
 		return v
 	}
-	return "sandbox"
+	return "native"
 }
 
 func defaultBundlesDir() string {
