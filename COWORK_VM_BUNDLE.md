@@ -1,4 +1,4 @@
-# Cowork VM Bundle Reference - v1.6608.1
+# Cowork VM Bundle Reference - v1.6608.2
 
 > Re-validate on every upstream Claude Desktop version update.
 
@@ -11,7 +11,7 @@
 
 ## Current Config (v1.2.234)
 
-> **Note:** The VM bundle SHA and all file checksums have been unchanged since v1.1.9669, stable across all versions through v1.6608.1. Only the Claude Desktop version changed.
+> **Note:** The VM bundle SHA and all file checksums have been unchanged since v1.1.9669, stable across all versions through v1.6608.2. Only the Claude Desktop version changed.
 
 - **SHA:** `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d`
 - **Platforms:** darwin (arm64, x64), win32 (arm64, x64)
@@ -216,6 +216,7 @@ Key installed packages: build-essential, curl, ffmpeg, gcc-11, ghostscript, git,
 
 | Claude Desktop Version | VM Bundle SHA | Notable Changes |
 |----------------------|--------------|-----------------|
+| 1.6608.2 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | No VM bundle changes; identical config and images to 1.6608.0 |
 | 1.6608.1 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | No VM bundle changes; identical config and images to 1.6608.0 |
 | 1.6608.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged - same SHA, same checksums. app.asar changes: new JS files (coworkArtifact.js, buddy.js), removed sqliteWorker.node.js. Operon/Conda engine removed from Desktop |
 | 1.6259.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | Unchanged - same SHA, same checksums |

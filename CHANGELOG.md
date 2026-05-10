@@ -9,6 +9,7 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ### Changed
 - Updated upstream reference materials to Claude Desktop v1.6608.1 (rebuild-only release - no protocol, handler, or VM bundle changes vs 1.6608.0)
+- Updated upstream reference materials to Claude Desktop v1.6608.2 (rebuild with new tcpproxy dependency in cowork-svc.exe - no protocol, handler, or VM bundle changes vs 1.6608.1)
 
 ## 1.0.54 — 2026-05-07
 - **Upstream update to Claude Desktop v1.6608.0** (from v1.6259.0)

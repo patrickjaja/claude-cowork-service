@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis - v1.6608.1
+# Cowork Service Binary Analysis - v1.6608.2
 
 ## Binary Overview
 
@@ -545,6 +545,7 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.6608.2 | 12,647,760 bytes | Rebuild with new tcpproxy dependency (github.com/inetaf/tcpproxy). Same Go 1.24.13, same handlers, identical binary size. golang.org/x/crypto bumped to v0.47.0, golang.org/x/sys to v0.40.0. VCS revision ebf1a166e82541b54229aa620d117c60923a939a, build 2026-05-08T23:17:27Z. No protocol changes |
 | 1.6608.1 | 12,647,760 bytes | Rebuild only, no functional changes. Same Go 1.24.13, same handlers, same dependencies. VCS revision f156d01489166df990fe362e0a219bf5099a1857, build 2026-05-08T05:28:58Z |
 | 1.6608.0 | (verify on extraction) | Operon/Conda notebook engine completely removed (~3 MB build size drop). `createDiskImage` RPC removed, `mountConda` spawn param removed, `addApprovedOauthToken` simplified (name field removed), `startVM` gains cpuCount/apiProbeURL, `isDebugLoggingEnabled` now Desktop-local. New locale: id-ID.json. New env vars: CLAUDE_CODE_DISABLE_AGENTS_FLEET, CLAUDE_TMPDIR. Removed env var: CLAUDE_OAUTH_CLIENT_SECRET. New JS: buddy.js; removed: sqliteWorker.node.js. VM bundle unchanged |
 | 1.6259.0 | (verify on extraction) | Installer switched from Squirrel nupkg to MSIX - cowork-svc.exe and smol-bin.x64.vhdx moved to `app/resources/`. Pipe protocol unchanged (22 methods, 8 events). macOS switches to @ant/claude-swift native addon. SDK 0.2.128; new buddy.js build artifact; new installer dirs (fonts/, drizzle/sqlite/, ion-dist/, seed/); Vertex auth renamed to interactive auth; new IPC handlers |

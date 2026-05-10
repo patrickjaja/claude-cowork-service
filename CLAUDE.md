@@ -72,7 +72,7 @@ make test
 - `bin/` --- Extracted from Claude Desktop Windows installer MSIX package (`cowork-svc.exe`, `app.asar`, `chrome-native-host.exe`, `smol-bin.x64.vhdx`, locale JSONs, icons)
 - `vm-bundle/` --- VM images + config downloaded from Anthropic CDN
 - Both directories have `.version` files tracking the Claude Desktop version they were extracted from
-- Currently at version **1.6608.0**
+- Currently at version **1.6608.2**
 
 ## Version-Sensitive Artifacts
 
