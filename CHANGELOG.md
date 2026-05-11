@@ -4,6 +4,8 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+## 1.0.55 — 2026-05-11
+
 ### Fixed
 - `isProcessRunning` response now includes `exitCode` field alongside `running` - Desktop expects both fields for process health monitoring
 - Fix mount path canonicalization on systems where `/home` is a symlink to `/var/home` (Fedora Silverblue, Bazzite, CoreOS, Universal Blue) - `resolveSubpath()` now resolves symlinks when the fast string prefix check fails, preventing doubled paths like `/var/home/user/home/user/...` (#40)
