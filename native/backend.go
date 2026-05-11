@@ -13,6 +13,21 @@ import (
 	"github.com/patrickjaja/claude-cowork-service/process"
 )
 
+// canonicalizePath resolves symlinks in the longest existing prefix of path.
+// Handles paths where leaf components don't yet exist on disk by walking up
+// to the nearest existing ancestor and resolving from there.
+func canonicalizePath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved
+	}
+	dir := filepath.Dir(path)
+	if dir == path {
+		return path
+	}
+	return filepath.Join(canonicalizePath(dir), filepath.Base(path))
+}
+
 // resolveSubpath resolves a subpath that may be root-relative or home-relative.
 //
 // Claude Desktop v1.569.0+ changed getVMStorageSubpath to return root-relative
@@ -21,18 +36,30 @@ import (
 // produces doubled paths like "/home/user/home/user/.config/Claude/...".
 //
 // This function detects the format and returns the correct absolute path:
-//   - Root-relative ("home/user/..."): prepend "/" → "/home/user/..."
-//   - Home-relative (".config/..."): prepend home → "/home/user/.config/..."
+//   - Root-relative ("home/user/..."): prepend "/" -> "/home/user/..."
+//   - Home-relative (".config/..."): prepend home -> "/home/user/.config/..."
+//
+// On systems where /home is a symlink (e.g. /home -> /var/home on Fedora
+// Silverblue), the string prefix check may fail because os.UserHomeDir()
+// returns the canonical form while the client sends the symlink form. The
+// slow path resolves symlinks on both sides before comparing.
 func resolveSubpath(home, relPath string) string {
 	if relPath == "" {
 		return home
 	}
-	// Treat relPath as root-absolute: /home/user/.config/…
+	// Treat relPath as root-absolute: /home/user/.config/...
 	asRoot := filepath.Clean("/" + relPath)
-	if strings.HasPrefix(asRoot, home+string(filepath.Separator)) || asRoot == home {
-		return asRoot // already contains the home directory
+	sep := string(filepath.Separator)
+	if strings.HasPrefix(asRoot, home+sep) || asRoot == home {
+		return asRoot
 	}
-	// Legacy home-relative path: .config/…
+	// Slow path: resolve symlinks to handle /home -> /var/home style layouts.
+	homeCanon := canonicalizePath(home)
+	asRootCanon := canonicalizePath(asRoot)
+	if strings.HasPrefix(asRootCanon, homeCanon+sep) || asRootCanon == homeCanon {
+		return asRootCanon
+	}
+	// Legacy home-relative path: .config/...
 	return filepath.Join(home, relPath)
 }
 

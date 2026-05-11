@@ -567,7 +567,10 @@ func (b *KvmBackend) ReadFile(processName string, filePath string) ([]byte, erro
 		resolved = filepath.Clean(filePath)
 	}
 	home, _ := os.UserHomeDir()
-	if resolved != home && !strings.HasPrefix(resolved, home+string(filepath.Separator)) {
+	homeCanon := canonicalizePathVM(home)
+	resolvedCanon := canonicalizePathVM(resolved)
+	sep := string(filepath.Separator)
+	if resolvedCanon != homeCanon && !strings.HasPrefix(resolvedCanon, homeCanon+sep) {
 		return nil, fmt.Errorf("access denied: path outside home directory")
 	}
 	return os.ReadFile(resolved)

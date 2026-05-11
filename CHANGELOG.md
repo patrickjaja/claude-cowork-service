@@ -6,6 +6,9 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ### Fixed
 - `isProcessRunning` response now includes `exitCode` field alongside `running` - Desktop expects both fields for process health monitoring
+- Fix mount path canonicalization on systems where `/home` is a symlink to `/var/home` (Fedora Silverblue, Bazzite, CoreOS, Universal Blue) - `resolveSubpath()` now resolves symlinks when the fast string prefix check fails, preventing doubled paths like `/var/home/user/home/user/...` (#40)
+- Fix `hostAbsFromShared()` in VM backend incorrectly rejecting valid paths as "outside home" on symlinked home systems
+- Fix `ReadFile()` home containment check in VM backend to use canonicalized paths
 
 ### Changed
 - Updated upstream reference materials to Claude Desktop v1.6608.1 (rebuild-only release - no protocol, handler, or VM bundle changes vs 1.6608.0)
