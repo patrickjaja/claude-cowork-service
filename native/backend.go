@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -119,6 +121,11 @@ func (b *Backend) StartVM(name string, bundlePath string, memoryGB int) error {
 
 	log.Printf("[native] startVM %s — running natively on host", name)
 
+	// Run session integrity checks in background (non-blocking).
+	// Scans for half-written JSONL files, orphaned pre-stop backups,
+	// and other signs of previous unclean shutdown.
+	go b.checkSessionIntegrity(name)
+
 	// Emit startup events asynchronously to avoid race with subscribeEvents
 	// (both calls arrive simultaneously on different connections)
 	go func() {
@@ -135,15 +142,32 @@ func (b *Backend) StartVM(name string, bundlePath string, memoryGB int) error {
 }
 
 func (b *Backend) StopVM(name string) error {
+	if b.debug {
+		log.Printf("[native] stopVM %s — initiating graceful shutdown", name)
+	}
+
+	// Backup session files before killing processes.
+	// This preserves the queue JSONL state in case the graceful drain
+	// in kill() doesn't complete before the process is terminated.
+	home, _ := os.UserHomeDir()
+	sessionDir := filepath.Join(home, ".local", "share", "claude-cowork", "sessions", name)
+	if _, err := os.Stat(sessionDir); err == nil {
+		backupDir := sessionDir + ".pre-stop-" + time.Now().Format("20060102-150405")
+		if cpErr := exec.Command("cp", "-a", sessionDir, backupDir).Run(); cpErr != nil {
+			log.Printf("[native] WARNING: pre-stop backup failed: %v", cpErr)
+		} else {
+			log.Printf("[native] pre-stop backup created: %s", backupDir)
+			// Prune old backups: keep only the 5 most recent
+			go pruneBackups(sessionDir, 5)
+		}
+	}
+
 	b.mu.Lock()
 	b.started = false
 	b.mu.Unlock()
 
 	b.tracker.killAll()
 
-	if b.debug {
-		log.Printf("[native] stopVM %s", name)
-	}
 	b.emitEvent(map[string]string{"type": "vmStopped", "name": name})
 	return nil
 }
@@ -559,5 +583,99 @@ func (b *Backend) emitEvent(event interface{}) {
 
 	for _, cb := range subs {
 		go cb(event)
+	}
+}
+
+// checkSessionIntegrity runs background integrity checks on session files
+// for the given VM name. This detects signs of previous unclean shutdowns
+// (truncated JSONL, orphaned backups) and logs warnings.
+//
+// This intentionally does NOT auto-repair — that's left to cowork-session-doctor
+// which can be run interactively. We only log diagnostics here.
+func (b *Backend) checkSessionIntegrity(name string) {
+	home, _ := os.UserHomeDir()
+	sessionsDir := filepath.Join(home, ".local", "share", "claude-cowork", "sessions")
+
+	if _, err := os.Stat(sessionsDir); err != nil {
+		return
+	}
+
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return
+	}
+
+	backupCount := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		eName := e.Name()
+
+		// Count orphaned pre-stop backups
+		if strings.Contains(eName, ".pre-stop-") {
+			backupCount++
+			continue
+		}
+
+		// Check session directories for JSONL integrity
+		sessionDir := filepath.Join(sessionsDir, eName)
+		auditPath := filepath.Join(sessionDir, "audit.jsonl")
+		if info, err := os.Stat(auditPath); err == nil {
+			if info.Size() == 0 {
+				log.Printf("[native] INTEGRITY WARNING: empty audit.jsonl in session %s", eName)
+			} else {
+				// Check if audit.jsonl ends with a complete line (no truncation)
+				f, err := os.Open(auditPath)
+				if err == nil {
+					buf := make([]byte, 1)
+					f.Seek(info.Size()-1, 0)
+					n, _ := f.Read(buf)
+					if n > 0 && buf[0] != '\n' {
+						log.Printf("[native] INTEGRITY WARNING: audit.jsonl in session %s may be truncated (no trailing newline)", eName)
+					}
+					f.Close()
+				}
+			}
+		}
+	}
+
+	if backupCount > 0 {
+		log.Printf("[native] startup: found %d pre-stop backup(s) in %s", backupCount, sessionsDir)
+	}
+}
+
+// pruneBackups removes old pre-stop backup directories, keeping only the
+// `keep` most recent ones. Backups are identified by the ".pre-stop-" suffix
+// pattern in the session directory's parent.
+func pruneBackups(sessionDir string, keep int) {
+	parent := filepath.Dir(sessionDir)
+	base := filepath.Base(sessionDir)
+	prefix := base + ".pre-stop-"
+
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+
+	var backups []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), prefix) {
+			backups = append(backups, filepath.Join(parent, e.Name()))
+		}
+	}
+
+	// Sort lexicographically (timestamp suffix ensures chronological order)
+	sort.Strings(backups)
+
+	// Remove oldest backups, keeping `keep` most recent
+	if len(backups) > keep {
+		for _, old := range backups[:len(backups)-keep] {
+			if err := os.RemoveAll(old); err != nil {
+				log.Printf("[native] failed to prune backup %s: %v", old, err)
+			} else {
+				log.Printf("[native] pruned old backup: %s", old)
+			}
+		}
 	}
 }
