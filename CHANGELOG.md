@@ -4,9 +4,19 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
-## 1.0.56 — 2026-05-11
+## 1.0.56 - 2026-05-11
 
-## 1.0.55 — 2026-05-11
+### Added
+- Graceful shutdown with pre-kill backup - `kill()` now sends SIGINT first and waits 3s for the Claude CLI to flush pending writes before escalating to SIGTERM; `StopVM()` snapshots the session directory before killing processes (keeps 5 most recent backups)
+- Startup integrity check for session JSONL files - on VM startup, scans the sessions directory for truncated/empty audit.jsonl files and logs warnings (does not auto-repair for safety)
+- Session doctor tool (`scripts/cowork-session-doctor/`) - Python CLI for diagnosing and repairing session JSONL files (diagnose, repair, extract, backup, validate commands)
+
+### Fixed
+- Broken pipe race condition on spawn - adds a `ready` channel to `localProcess` that waits for first stdout/stderr output (up to 5s) before writing stdin, preventing `failed to flush buffered stdin` errors when Desktop sends data immediately after spawn confirmation
+
+All changes in this section contributed by [@shmohammadi86](https://github.com/shmohammadi86) ([#41](https://github.com/patrickjaja/claude-cowork-service/pull/41)).
+
+## 1.0.55 - 2026-05-11
 
 ### Fixed
 - `isProcessRunning` response now includes `exitCode` field alongside `running` - Desktop expects both fields for process health monitoring
