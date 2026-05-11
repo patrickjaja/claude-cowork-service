@@ -4,6 +4,8 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+## 1.0.56 — 2026-05-11
+
 ## 1.0.55 — 2026-05-11
 
 ### Fixed
