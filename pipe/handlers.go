@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"bytes"
 	"encoding/json"
 	"net"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"github.com/patrickjaja/claude-cowork-service/logx"
 )
 
+var keepaliveMarker = []byte(`"__keepalive__"`)
+
 // Handler dispatches RPC methods to the VM backend.
 type Handler struct {
 	backend VMBackend
@@ -20,6 +23,19 @@ type Handler struct {
 // NewHandler creates a new RPC handler.
 func NewHandler(backend VMBackend, debug bool) *Handler {
 	return &Handler{backend: backend, debug: debug}
+}
+
+// suppressRPCLog reports whether the incoming RPC should be omitted from the
+// debug log. isGuestConnected is always noisy; isProcessRunning is only noisy
+// for the Desktop keepalive heartbeat (processID "__keepalive__").
+func (h *Handler) suppressRPCLog(req Request) bool {
+	switch req.Method {
+	case "isGuestConnected":
+		return true
+	case "isProcessRunning":
+		return bytes.Contains(req.Params, keepaliveMarker)
+	}
+	return false
 }
 
 // Handle parses and dispatches an RPC request.
@@ -33,7 +49,7 @@ func (h *Handler) Handle(conn net.Conn, payload []byte) {
 
 	h.backend.Touch()
 
-	if req.Method != "isGuestConnected" && req.Method != "isProcessRunning" {
+	if !h.suppressRPCLog(req) {
 		logx.Debug("RPC: %s (id=%v) params: %s", req.Method, req.ID, logx.Trunc(string(req.Params)))
 	}
 

@@ -236,204 +236,28 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		}
 	}
 
-	// Create /sessions/<name> symlink so absolute VM paths resolve.
-	// MkdirAll and Symlink both fail without root, which is the common case —
-	// the caller already copes by path-remapping cwd/env in that mode.
-	topSessionDir := "/sessions/" + name
-	if err := os.MkdirAll("/sessions", 0755); err != nil && b.debug {
-		log.Printf("[native] MkdirAll /sessions: %v (expected without root)", err)
-	}
-	if _, err := os.Lstat(topSessionDir); err != nil {
-		if err := os.Symlink(realSessionDir, topSessionDir); err != nil && b.debug {
-			log.Printf("[native] symlink %s → %s: %v (expected without root)", topSessionDir, realSessionDir, err)
-		}
-	}
-
-	// Session prefix used for path remapping (VM paths ↔ real paths)
-	sessionPrefix := "/sessions/" + name
-
-	// If /sessions isn't writable (no root), remap cwd and env to real paths
-	if _, err := os.Stat(cwd); err != nil {
-		// Replace the /sessions/<name> prefix with the real session dir,
-		// preserving any sub-path (e.g. /mnt/outputs). Using filepath.Base
-		// here would drop everything but the final segment, turning
-		// /sessions/<name>/mnt/outputs into realSessionDir/outputs and
-		// triggering a child-side chdir() failure that surfaces as a
-		// misleading "fork/exec: no such file or directory" error.
-		var remapped string
-		if cwd == sessionPrefix || strings.HasPrefix(cwd, sessionPrefix+"/") {
-			remapped = realSessionDir + cwd[len(sessionPrefix):]
-		} else {
-			// Fallback: cwd doesn't reference the session prefix at all.
-			remapped = filepath.Join(realSessionDir, filepath.Base(cwd))
-		}
-		if b.debug {
-			log.Printf("[native] remap cwd: %s → %s", cwd, remapped)
-		}
-		cwd = remapped
-
-		// Remap env vars and args pointing to /sessions/<name>
-		for k, v := range env {
-			if len(v) >= len(sessionPrefix) && v[:len(sessionPrefix)] == sessionPrefix {
-				env[k] = realSessionDir + v[len(sessionPrefix):]
-				if b.debug {
-					log.Printf("[native] remap env %s: %s", k, env[k])
-				}
-			}
-		}
-		for i, a := range args {
-			if len(a) >= len(sessionPrefix) && a[:len(sessionPrefix)] == sessionPrefix {
-				args[i] = realSessionDir + a[len(sessionPrefix):]
-				if b.debug {
-					log.Printf("[native] remap arg[%d]: %s", i, args[i])
-				}
-			}
-		}
-	}
-
-	// Use the real workspace directory as cwd instead of the session directory.
-	// The session's mnt/ dir uses symlinks for mounts, but Glob doesn't follow
-	// directory symlinks, so files aren't found. Setting cwd to the actual
-	// workspace path lets the model search real files directly.
-	for mountName, mount := range mounts {
-		if strings.HasPrefix(mountName, ".") || mountName == "uploads" || mountName == "outputs" {
-			continue
-		}
-		wsPath := resolveSubpath(home, mount.Path)
-		if info, err := os.Stat(wsPath); err == nil && info.IsDir() {
-			if b.debug {
-				log.Printf("[native] using workspace mount %q as cwd: %s (was %s)", mountName, wsPath, cwd)
-			}
-			cwd = wsPath
-		}
-		break
-	}
-
-	// Remove empty env vars that might confuse auth (e.g. empty ANTHROPIC_API_KEY)
+	// Drop empty env vars that might confuse auth (e.g. empty ANTHROPIC_API_KEY).
 	for k, v := range env {
 		if v == "" {
 			delete(env, k)
 		}
 	}
 
-	// SDK MCP servers (dispatch, cowork, session_info, etc.) are kept in
-	// --mcp-config as {type:"sdk"} stubs. The CLI sends control_request
-	// messages on stdout for MCP tool calls, which flow through our event
-	// stream to Claude Desktop. Desktop's session manager handles them and
-	// sends control_response back via writeStdin — identical to VM mode.
-	// No stripping or proxying needed on our side.
-	if b.debug {
-		for i, a := range args {
-			if a == "--mcp-config" && i+1 < len(args) {
-				log.Printf("[native] --mcp-config passed through (SDK MCP proxy via event stream): %s", args[i+1])
-				break
-			}
-		}
-	}
-
-	// Strip --disallowedTools entirely on native Linux.
+	// Fall back to the real session dir if the caller sent a cwd that doesn't
+	// exist on the host (e.g. a VM-style /sessions/<name> path from a client
+	// that hasn't been taught the native layout yet). Without this, exec fails
+	// with a misleading "fork/exec <cmd>: no such file or directory" — the
+	// missing path is c.Dir, not the binary.
 	//
-	// Desktop passes --disallowedTools for VM-based sessions where certain tools
-	// (present_files, allow_cowork_file_delete, launch_code_session, create_artifact,
-	// update_artifact) are handled by the VM runtime rather than the CLI. On native
-	// Linux there is no VM — the CLI must handle all tools directly.
-	//
-	// Default --disallowedTools from Desktop (as of v1.569.0, unchanged from v1.1.9669):
-	//   AskUserQuestion, mcp__cowork__allow_cowork_file_delete,
-	//   mcp__cowork__present_files, mcp__cowork__launch_code_session,
-	//   mcp__cowork__create_artifact, mcp__cowork__update_artifact
-	//
-	// We remove the entire flag so all tools are available to the CLI.
-	for i, a := range args {
-		if a == "--disallowedTools" && i+1 < len(args) {
+	// Skip this in wrapped mode: sandbox cwds live inside the sandbox and may
+	// not exist on the host, but the wrapper is responsible for choosing a
+	// valid host-side c.Dir for itself.
+	if cwd != "" && b.commandWrapper == nil {
+		if _, err := os.Stat(cwd); err != nil {
 			if b.debug {
-				log.Printf("[native] stripping --disallowedTools (VM-only restriction): %s", args[i+1])
+				log.Printf("[native] cwd %s missing, falling back to %s", cwd, realSessionDir)
 			}
-			// Remove both the flag and its value by blanking them
-			args = append(args[:i], args[i+2:]...)
-			break
-		}
-	}
-
-	// Inject --brief flag when Desktop signals dispatch/agent mode via CLAUDE_CODE_BRIEF=1.
-	// Desktop passes this env var for ditto/dispatch agent sessions (which have SendUserMessage
-	// in --tools), but NOT for regular cowork sessions. The --brief flag ensures the CLI
-	// registers SendUserMessage in its tool list (fixed in CLI v2.1.86).
-	if env["CLAUDE_CODE_BRIEF"] == "1" {
-		hasBrief := false
-		for _, a := range args {
-			if a == "--brief" {
-				hasBrief = true
-				break
-			}
-		}
-		if !hasBrief {
-			args = append(args, "--brief")
-			if b.debug {
-				log.Printf("[native] injected --brief flag (CLAUDE_CODE_BRIEF=1)")
-			}
-		}
-
-		// Inject file-delivery instructions for dispatch/agent sessions.
-		// The user is on a remote client (phone/browser) and can't access local paths.
-		// Without this, the model often uses computer:// markdown links instead of the
-		// attachments parameter, and files never reach the remote user.
-		//
-		// Also tell the model the real outputs path so it doesn't waste tool calls
-		// trying /sessions/ paths (which only exist when /sessions is root-writable).
-		outputsHint := ""
-		for mountName, mount := range mounts {
-			if mountName == "outputs" {
-				hostOutputs := resolveSubpath(home, mount.Path)
-				outputsHint = " The outputs directory for this session is at: " + hostOutputs +
-					" — write files there directly. The /sessions/ directory does NOT exist in this environment."
-				break
-			}
-		}
-		args = append(args, "--append-system-prompt",
-			"IMPORTANT: When sharing files with the user, you MUST pass the absolute file path "+
-				"in the `attachments` array parameter of SendUserMessage. Do NOT use computer:// "+
-				"links or markdown file links — the user is on a remote client and cannot access "+
-				"local paths. After creating a file, call present_files first, then call "+
-				"SendUserMessage with both a message and the attachments array containing the file paths."+
-				outputsHint)
-		if b.debug {
-			log.Printf("[native] injected --append-system-prompt for dispatch file delivery (outputsHint=%q)", outputsHint)
-		}
-	}
-
-	// Build mount path remappings (forward and reverse).
-	//
-	// Forward (stdin, Desktop→CLI): session/mnt/<mount> → real target path
-	//   Glob doesn't follow directory symlinks, so the model must see real paths.
-	//
-	// Reverse (stdout, CLI→Desktop): real target path → VM /sessions/<name>/mnt/<mount>
-	//   Desktop's MCP tools expect VM-style paths. Without reverse mapping, tools
-	//   like present_files fail because Desktop can't resolve native Linux paths.
-	var mountRemap []pathRemap
-	var reverseMountRemap []pathRemap
-	for mountName, mount := range mounts {
-		hostPath := resolveSubpath(home, mount.Path)
-		mntPath := realSessionDir + "/mnt/" + mountName
-		vmMntPath := sessionPrefix + "/mnt/" + mountName
-		if mntPath != hostPath {
-			mountRemap = append(mountRemap, pathRemap{
-				from: []byte(mntPath),
-				to:   []byte(hostPath),
-			})
-			if b.debug {
-				log.Printf("[native] mount remap (fwd): %s → %s", mntPath, hostPath)
-			}
-		}
-		// Reverse: real host path → VM mount path (for outgoing MCP requests)
-		if hostPath != vmMntPath {
-			reverseMountRemap = append(reverseMountRemap, pathRemap{
-				from: []byte(hostPath),
-				to:   []byte(vmMntPath),
-			})
-			if b.debug {
-				log.Printf("[native] mount remap (rev): %s → %s", hostPath, vmMntPath)
-			}
+			cwd = realSessionDir
 		}
 	}
 
@@ -442,7 +266,7 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		ctx := SpawnContext{
 			Name:           name,
 			ID:             id,
-			SessionPrefix:  sessionPrefix,
+			SessionPrefix:  "/sessions/" + name,
 			RealSessionDir: realSessionDir,
 			Mounts:         mounts,
 			ResolvedMounts: resolvedMounts,
@@ -455,7 +279,7 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		}
 	}
 
-	return b.tracker.spawn(id, cmd, args, env, cwd, sessionPrefix, realSessionDir, mountRemap, reverseMountRemap)
+	return b.tracker.spawn(id, cmd, args, env, cwd)
 }
 
 func (b *Backend) Kill(processID string, signal string) error {

@@ -98,7 +98,11 @@ func (b *Backend) wrapCommand(ctx native.SpawnContext, cmd string, args []string
 		return "", nil, nil, "", err
 	}
 
-	hostCwd := cwd
+	// srt's own c.Dir on the host must be a real directory. The caller's cwd
+	// is a sandbox-perspective path (only valid after bind mounts), so anchor
+	// the wrapper itself at RealSessionDir and let the inner shell `cd` to
+	// sandboxCwd before exec.
+	hostCwd := ctx.RealSessionDir
 	sandboxCwd, args, env := remapSpawnPathsForSandbox(ctx, cwd, args, env)
 
 	config := buildSRTConfig(ctx, sandboxCwd, allowedDomains, cmd, baseConfig)
