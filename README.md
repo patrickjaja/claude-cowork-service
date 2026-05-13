@@ -62,6 +62,43 @@ yay -S claude-cowork-service
 
 Updates arrive through your AUR helper (e.g. `yay -Syu`).
 
+### Artix Linux (OpenRC)
+
+The same AUR package works on Artix — the PKGBUILD installs both the systemd
+user unit and an OpenRC init script. After install, set your desktop user in
+`/etc/conf.d/claude-cowork`:
+
+```sh
+# /etc/conf.d/claude-cowork
+COWORK_USER="yourusername"
+```
+
+Then start the service **after** your graphical session is up, so the init
+script can find the live `DISPLAY` / `WAYLAND_DISPLAY` /
+`DBUS_SESSION_BUS_ADDRESS` from your session leader (it scrapes
+`/proc/<pid>/environ`). Pick whichever startup hook matches your session:
+
+```sh
+# Wayland — Hyprland (~/.config/hypr/hyprland.conf)
+exec-once = sudo rc-service claude-cowork start
+
+# Wayland — Sway (~/.config/sway/config)
+exec sudo rc-service claude-cowork start
+
+# X11 — startx / xinit (~/.xinitrc, before `exec yourwm`)
+sudo rc-service claude-cowork start &
+
+# X11 — login manager (~/.xprofile)
+sudo rc-service claude-cowork start &
+```
+
+The init script forwards the same set of display/IPC variables the systemd
+user unit imports via `systemctl --user import-environment` — `DISPLAY`
+(X11), `WAYLAND_DISPLAY` (Wayland), `DBUS_SESSION_BUS_ADDRESS`,
+`XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`, and compositor-specific sockets
+(`HYPRLAND_INSTANCE_SIGNATURE`, `SWAYSOCK`, `YDOTOOL_SOCKET`). Missing
+variables silently no-op, so the same script works on X11 and Wayland.
+
 ### NixOS
 
 ```nix

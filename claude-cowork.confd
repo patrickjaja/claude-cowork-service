@@ -1,0 +1,12 @@
+# /etc/conf.d/claude-cowork
+#
+# Configuration for the Claude Cowork OpenRC service.
+
+# REQUIRED: the desktop user whose session the daemon should attach to.
+# This must be the user that runs Claude Desktop / Claude Code from the GUI.
+#COWORK_USER="yourusername"
+
+# Optional: space-separated list of environment variables to pull from the
+# user's running desktop session (looked up via /proc/<pid>/environ).
+# Defaults match the systemd user-unit's `systemctl --user import-environment`.
+#COWORK_IMPORT_ENV="WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DISPLAY DBUS_SESSION_BUS_ADDRESS HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK YDOTOOL_SOCKET"
