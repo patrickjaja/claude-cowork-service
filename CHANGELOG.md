@@ -4,6 +4,18 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Updated upstream reference materials from Claude Desktop v1.6608.2 to v1.7196.0
+- Desktop no longer sends `name` field in createVM, startVM, stopVM, isRunning, isGuestConnected, subscribeEvents RPC methods (our code already handles this via fallbacks)
+- `getDownloadStatus` RPC no longer sent over pipe (handled locally in Electron app; our handler remains as defensive no-op)
+- New `userDataRoot` field added to `configure` and `subscribeEvents` params (silently ignored by Go unmarshaller)
+
+### Added
+- Documented 2 new session types: `scheduled` (cron tasks) and `radar` (restricted)
+- Documented 20+ new spawn environment variables passed through to CLI
+- Documented `mcp__cowork__propose_skills` in disallowed tools list
+- Upstream binary adds `vm/hostinfo.go` source and `github.com/anthropics/win-httpproxy` dependency
+
 ## 1.0.57 — 2026-05-14
 
 ## 1.0.56 - 2026-05-11

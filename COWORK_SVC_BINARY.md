@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis - v1.6608.2
+# Cowork Service Binary Analysis - v1.7196.0
 
 ## Binary Overview
 
@@ -101,7 +101,7 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (last version: v1.5354.0)
+## cowork-svc.exe Deep Analysis (last version: v1.7196.0)
 
 > **NOTE:** In v1.6259.0 the installer switched from Squirrel (nupkg) to MSIX, moving cowork-svc.exe from `lib/net45/resources/` to `app/resources/`. The binary was never removed - our extract scripts now use MSIX extraction. The analysis below covers the binary as extracted from the current MSIX package. The pipe protocol is unchanged - the TypeScript client in `index.js` still connects to `\\.\pipe\cowork-vm-service` and sends the same RPC methods.
 
@@ -109,12 +109,12 @@ Claude Desktop (Electron, patched)
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
-| **Module** | github.com/anthropics/cowork-win32-service (v0.0.0-20260508052858-f156d0148916+dirty) |
-| **Build date** | 2026-05-08 |
-| **Size** | 12,647,760 bytes |
-| **SHA256** | d93992b864fa356af630dc452634863af439c7cfbc725a2883dd4ec2a0a6a81c |
-| **VCS revision** | f156d01489166df990fe362e0a219bf5099a1857 |
-| **Build timestamp** | 2026-05-08T05:28:58Z |
+| **Module** | github.com/anthropics/cowork-win32-service (v0.0.0-20260512053440-2dbd7802ab03+dirty) |
+| **Build date** | 2026-05-12 |
+| **Size** | 12,649,808 bytes |
+| **SHA256** | ad430f79331db7ab40820dda49f27f316660f89562b7b5a9d34048f9cc80c906 |
+| **VCS revision** | 2dbd7802ab037cbb97d77be1a063241009b5e598 |
+| **Build timestamp** | 2026-05-12T05:34:40Z |
 | **Last Squirrel version** | v1.5354.0 (nupkg) |
 | **MSIX since** | v1.6259.0 (moved to `app/resources/`) |
 
@@ -123,10 +123,13 @@ Claude Desktop (Electron, patched)
 Three packages: `main`, `pipe`, `vm`
 
 **New source files in v1.4758.0 (unchanged in v1.5354.0):**
-- `cmd/cowork-svc/variant.go` — build variant support
-- `pipe/signature.go` — client signature verification
-- `vm/vhdx.go` — VHDX creation support
-- `vm/logfile_security.go` — log file ACL hardening
+- `cmd/cowork-svc/variant.go` - build variant support
+- `pipe/signature.go` - client signature verification
+- `vm/vhdx.go` - VHDX creation support
+- `vm/logfile_security.go` - log file ACL hardening
+
+**New source file in v1.7196.0:**
+- `vm/hostinfo.go` - host info collection for network diagnostics
 
 #### pipe package (RPC protocol handling)
 
@@ -183,8 +186,10 @@ Three packages: `main`, `pipe`, `vm`
 
 **VM configuration:**
 - SetMemoryMB, SetCPUCount, SetKernelPath, SetInitrdPath, SetVHDXPath
-- SetSmolBinPath, SetSessionDiskPath, SetCondaDiskPath — disk management *(SetSessionDiskPath and SetCondaDiskPath new in v1.4758.0)*
-- HasUnreleasedResources — resource cleanup check *(new in v1.4758.0)*
+- SetSmolBinPath, SetSessionDiskPath, SetCondaDiskPath - disk management *(SetSessionDiskPath and SetCondaDiskPath new in v1.4758.0)*
+- HasUnreleasedResources - resource cleanup check *(new in v1.4758.0)*
+- SetAPIProbeURL - formalized API probe URL configuration as own method *(new in v1.7196.0)*
+- GetNetworkInfo - host network info collection from `vm/hostinfo.go` *(new in v1.7196.0)*
 - SetUserToken, SetOwner — Windows user context
 - SetEventCallbacks, emitStartupStep
 
@@ -222,9 +227,10 @@ Three packages: `main`, `pipe`, `vm`
 
 ### External Dependencies
 
-- `github.com/apparentlymart/go-cidr/cidr` — CIDR arithmetic for networking
-- `github.com/containers/gvisor-tap-vsock` — gVisor networking (DHCP, DNS, forwarder)
-- `golang.org/x/net/http2` — HTTP/2 support
+- `github.com/apparentlymart/go-cidr/cidr` - CIDR arithmetic for networking
+- `github.com/anthropics/win-httpproxy` v0.0.0 - Anthropic's Windows HTTP proxy detection (extracted from inline code) *(new in v1.7196.0)*
+- `github.com/containers/gvisor-tap-vsock` - gVisor networking (DHCP, DNS, forwarder)
+- `golang.org/x/net/http2` - HTTP/2 support
 
 ### Notable Methods Not in Our Handler
 
@@ -235,12 +241,16 @@ Three packages: `main`, `pipe`, `vm`
 | `SetCondaDiskPath` | Conda environment disk | Native Linux uses host conda directly |
 | `SetSessionDiskPath` | Session-specific disk *(new in v1.4758.0)* | Native Linux uses host filesystem directly |
 | `HasUnreleasedResources` | Resource cleanup check *(new in v1.4758.0)* | May need no-op stub for native backend |
+| `SetAPIProbeURL` | Formalized API probe URL config *(new in v1.7196.0)* | Was inline in startVM; now own method |
+| `GetNetworkInfo` | Host network info collection *(new in v1.7196.0)* | From `vm/hostinfo.go`; VM-internal diagnostics |
 
 **Newly handled in v1.1.9669:** `handleCreateDiskImage`, `getSessionsDiskInfo`, `deleteSessionDirs` (all no-ops on native Linux).
 
 **v1.2.234:** No new handler functions. Binary is a rebuild with updated timestamps only (identical size).
 
-**v1.3561.0:** Minor rebuild (+6,656 bytes, 12,648,272 → 12,654,928 bytes). Same Go version (go1.24.13). No new handler functions. Build date 2026-04-20, VCS revision `fbc74be3fdc714a2c46ef1fb84f71d4e4c062930`. Certificate date rotation visible in string diff. No new RPC methods.
+**v1.7196.0:** Minor rebuild (+2,048 bytes, 12,647,760 -> 12,649,808 bytes). Same Go version (go1.24.13). No new handler functions. New source file `vm/hostinfo.go`. New dependency `github.com/anthropics/win-httpproxy` v0.0.0. New VM methods `SetAPIProbeURL` and `GetNetworkInfo`. Build date 2026-05-12, VCS revision `2dbd7802ab037cbb97d77be1a063241009b5e598`. Internal VM plumbing only - no protocol changes.
+
+**v1.3561.0:** Minor rebuild (+6,656 bytes, 12,648,272 -> 12,654,928 bytes). Same Go version (go1.24.13). No new handler functions. Build date 2026-04-20, VCS revision `fbc74be3fdc714a2c46ef1fb84f71d4e4c062930`. Certificate date rotation visible in string diff. No new RPC methods.
 
 **v1.4758.0:** Rebuild with same size (12,655,440 bytes). Same Go version (go1.24.13). New SHA256 `4ccc771f26fd2db82b072f6cf4c61af2802a737940bf5d4436b9a7d28cd9cbc8`. New source files: `cmd/cowork-svc/variant.go`, `pipe/signature.go`, `vm/vhdx.go`, `vm/logfile_security.go`. New VM methods: `SetCondaDiskPath`, `SetSessionDiskPath`, `HasUnreleasedResources`. New infrastructure: client binary signature verification (WinVerifyTrust), VHDX sparse disk creation, persistent bidirectional RPC, plugin permission gating, guest-to-host request/response protocol, log file ACL hardening, idle session detection and cleanup. Electron 41.3.0, TypeScript ~6.0.2, claude-agent-sdk 0.2.119.
 
@@ -258,17 +268,17 @@ Three packages: `main`, `pipe`, `vm`
 
 ---
 
-## bin/ Directory Checksums (v1.6608.0)
+## bin/ Directory Checksums (v1.7196.0)
 
 Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switched from Squirrel nupkg to MSIX - files moved but were not removed.
 
-| File | SHA256 | Notes |
-|------|--------|-------|
-| cowork-svc.exe | (verify on extraction) | Present - moved to MSIX in v1.6259.0 |
-| smol-bin.x64.vhdx | (verify on extraction) | Present - moved to MSIX in v1.6259.0 |
-| cowork-plugin-shim.sh | N/A | Not found in MSIX (may have moved elsewhere) |
-| chrome-native-host.exe | (verify on extraction) | Present |
-| app.asar | (verify on extraction) | Present, updated to v1.6608.0 |
+| File | SHA256 | Size | Notes |
+|------|--------|------|-------|
+| cowork-svc.exe | ad430f79331db7ab40820dda49f27f316660f89562b7b5a9d34048f9cc80c906 | 12,649,808 bytes | Present - moved to MSIX in v1.6259.0 |
+| chrome-native-host.exe | e3c916b194b69a39e63fba019c2d7fcbfbb2cfcfcd35ef14126a039ae42d9742 | 1,012,560 bytes | Present |
+| smol-bin.x64.vhdx | 1c520136d7bf6b671fe2b9711f3f39670458f7f1d6e1ce30d76e4350068fdfb7 | 37,748,736 bytes | Present - moved to MSIX in v1.6259.0 |
+| cowork-plugin-shim.sh | N/A | N/A | Not found in MSIX (may have moved elsewhere) |
+| app.asar | (verify on extraction) | ~28 MB | Present, updated to v1.7196.0 |
 
 ---
 
@@ -276,7 +286,7 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.6608.0 |
+| **Package** | @ant/desktop v1.7196.0 |
 | **Electron** | 41.3.0 |
 | **Node requirement** | >=22.0.0 |
 | **Sentry release** | (verify on extraction) |
@@ -313,6 +323,15 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 - **Artifact lifecycle** — New telemetry events: `cowork_artifacts_created`, `cowork_artifacts_updated`, `cowork_artifacts_imported`, `cowork_artifacts_exported`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
+
+### New in v1.7196.0
+
+- **cowork-svc.exe**: Minor rebuild (+2,048 bytes, 12,647,760 -> 12,649,808 bytes). Same Go version (go1.24.13). New SHA256 `ad430f79331db7ab40820dda49f27f316660f89562b7b5a9d34048f9cc80c906`. VCS revision `2dbd7802ab037cbb97d77be1a063241009b5e598`, build timestamp `2026-05-12T05:34:40Z`.
+- **New source file**: `vm/hostinfo.go` - host network info collection for VM diagnostics.
+- **New dependency**: `github.com/anthropics/win-httpproxy` v0.0.0 - Anthropic's Windows HTTP proxy detection library, extracted from previously inline proxy code.
+- **New VM methods**: `SetAPIProbeURL` (formalized as own method, was inline in startVM), `GetNetworkInfo` (from `vm/hostinfo.go`, host network diagnostics).
+- **No new RPC handler functions** - No changes to the pipe protocol. All existing handlers remain unchanged. This is internal VM plumbing only (hostinfo collection, proxy library extraction).
+- **No protocol changes** - Protocol remains at 21 active methods (createDiskImage removed in v1.6608.0) and 8 event types. Wire format, spawn parameters, and event structures unchanged.
 
 ### New in v1.6608.0
 
@@ -494,7 +513,7 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 
 ### Key Dependency Versions
 
-*(verified for v1.6608.0)*
+*(verified for v1.7196.0)*
 
 | Package | Version | Changed from v1.5354.0 |
 |---------|---------|------------------------|
@@ -545,6 +564,7 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.7196.0 | 12,649,808 bytes | Minor rebuild with no handler changes - internal VM plumbing only. New source file `vm/hostinfo.go` for host network diagnostics. New dependency `github.com/anthropics/win-httpproxy` (proxy detection extracted from inline code). New VM methods: `SetAPIProbeURL`, `GetNetworkInfo`. Same Go 1.24.13, same handlers. VCS revision 2dbd7802ab03, build 2026-05-12T05:34:40Z. No protocol changes |
 | 1.6608.2 | 12,647,760 bytes | Rebuild with new tcpproxy dependency (github.com/inetaf/tcpproxy). Same Go 1.24.13, same handlers, identical binary size. golang.org/x/crypto bumped to v0.47.0, golang.org/x/sys to v0.40.0. VCS revision ebf1a166e82541b54229aa620d117c60923a939a, build 2026-05-08T23:17:27Z. No protocol changes |
 | 1.6608.1 | 12,647,760 bytes | Rebuild only, no functional changes. Same Go 1.24.13, same handlers, same dependencies. VCS revision f156d01489166df990fe362e0a219bf5099a1857, build 2026-05-08T05:28:58Z |
 | 1.6608.0 | (verify on extraction) | Operon/Conda notebook engine completely removed (~3 MB build size drop). `createDiskImage` RPC removed, `mountConda` spawn param removed, `addApprovedOauthToken` simplified (name field removed), `startVM` gains cpuCount/apiProbeURL, `isDebugLoggingEnabled` now Desktop-local. New locale: id-ID.json. New env vars: CLAUDE_CODE_DISABLE_AGENTS_FLEET, CLAUDE_TMPDIR. Removed env var: CLAUDE_OAUTH_CLIENT_SECRET. New JS: buddy.js; removed: sqliteWorker.node.js. VM bundle unchanged |

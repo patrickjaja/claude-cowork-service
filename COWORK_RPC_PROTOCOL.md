@@ -1,4 +1,4 @@
-# Cowork RPC Protocol Reference - v1.6608.2
+# Cowork RPC Protocol Reference - v1.7196.0
 
 > **This document is the single source of truth for the protocol between Claude Desktop and cowork-svc.**
 > Re-validate on every upstream Claude Desktop version update.
@@ -79,6 +79,7 @@ Accepts VM resource configuration. On native Linux, values are logged but ignore
   "memoryMB": int,
   "cpuCount": int,
   "userDataName": string,
+  "userDataRoot": string,
   "sessionOnly": boolean
 }
 ```
@@ -86,6 +87,9 @@ Accepts VM resource configuration. On native Linux, values are logged but ignore
 **New optional fields (v1.4758.0):**
 - `userDataName` (string, optional): The Electron user data directory name (e.g., `"Claude"`). Sent by Desktop since v1.4758.0.
 - `sessionOnly` (boolean, optional): When `true`, indicates this is a fire-and-forget on-connect initialization call (no VM configuration needed). Desktop sends `configure({userDataName: "Claude", sessionOnly: true})` immediately on pipe connect since v1.4758.0. See Discovery #13.
+
+**New optional fields (v1.7196.0):**
+- `userDataRoot` (string, optional): The root path of the Electron user data directory. Sent alongside `userDataName`.
 
 **Response:** `null`
 
@@ -102,17 +106,17 @@ Creates a VM instance (or session directory on native Linux).
 **Params:**
 ```json
 {
-  "name": string,
   "bundlePath": string,
   "diskSizeGB": int
 }
 ```
 
+**Removed fields (v1.7196.0):**
+- `name` (string) - Removed. Desktop no longer sends the `name` field. The session name is derived from `bundlePath` via `filepath.Base(bundlePath)`.
+
 **Response:** `null`
 
-**Native Linux behavior:** No-op. The name from `bundlePath` is extracted as a fallback if `name` is empty (`filepath.Base(bundlePath)`).
-
-**Notes:** The `name` is used as the session directory identifier throughout the session lifecycle.
+**Native Linux behavior:** No-op. The name from `bundlePath` is extracted as a fallback (`filepath.Base(bundlePath)`).
 
 ---
 
@@ -123,13 +127,15 @@ Starts the VM (or marks the native backend as started and emits startup events).
 **Params:**
 ```json
 {
-  "name": string,
   "bundlePath": string,
   "memoryGB": int,
   "cpuCount": int,
   "apiProbeURL": string
 }
 ```
+
+**Removed fields (v1.7196.0):**
+- `name` (string) - Removed. Desktop no longer sends the `name` field.
 
 **New optional fields (v1.6608.0):**
 - `cpuCount` (int, optional): Number of CPUs to allocate to the VM. Ignored on native Linux.
@@ -152,12 +158,10 @@ Starts the VM (or marks the native backend as started and emits startup events).
 
 Stops the VM (or kills all tracked processes on native Linux).
 
-**Params:**
-```json
-{
-  "name": string
-}
-```
+**Params:** none
+
+**Removed fields (v1.7196.0):**
+- `name` (string) - Removed. Desktop no longer sends any parameters.
 
 **Response:** `null`
 
@@ -171,12 +175,10 @@ Stops the VM (or kills all tracked processes on native Linux).
 
 Checks if the VM is running.
 
-**Params:**
-```json
-{
-  "name": string
-}
-```
+**Params:** none
+
+**Removed fields (v1.7196.0):**
+- `name` (string) - Removed. Desktop no longer sends any parameters.
 
 **Response:**
 ```json
@@ -193,12 +195,10 @@ Checks if the VM is running.
 
 Checks if the guest agent inside the VM is connected.
 
-**Params:**
-```json
-{
-  "name": string
-}
-```
+**Params:** none
+
+**Removed fields (v1.7196.0):**
+- `name` (string) - Removed. Desktop no longer sends any parameters.
 
 **Response:**
 ```json
@@ -277,6 +277,27 @@ These mounts are only present when plugins are configured for the session. On na
 
 **Removed spawn `env` variables (v1.6608.0):**
 - `CLAUDE_OAUTH_CLIENT_SECRET` - removed
+
+**New spawn `env` variables (v1.7196.0):**
+- `CLAUDE_CODE_IS_COWORK` - always `"1"`, identifies the session as running inside Cowork
+- `CLAUDE_CODE_BRIEF_UPLOAD` - always `"1"`, enables brief upload mode
+- `CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL` - `"true"` to enable the AskUserQuestion tool
+- `CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES` - `"true"`/`"false"`, feature flag for tool use summary emission
+- `CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING` - `"1"`, feature flag for fine-grained tool streaming
+- `CLAUDE_CODE_SKIP_PRECOMPACT_LOAD` - `"1"`, feature flag to skip precompact load
+- `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING` - `"true"`, enables SDK file checkpointing
+- `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH` - `"1"`, signals that the SDK has OAuth refresh support
+- `CLAUDE_CODE_WORKSPACE_HOST_PATHS` - pipe-delimited list of workspace host paths
+- `CLAUDE_CODE_QUESTION_PREVIEW_FORMAT` - format string for question preview rendering
+- `CLAUDE_COWORK_MEMORY_EXTRA_GUIDELINES` - additional memory guidelines text for cowork sessions
+- `CLAUDE_COWORK_MEMORY_INDEX_CONTENT` - memory index content text
+- `CLAUDE_COWORK_MEMORY_PATH_OVERRIDE` - override path for memory storage
+- `MCP_CONNECTION_NONBLOCKING` - `"true"`, makes MCP connections non-blocking
+- `API_TIMEOUT_MS` - `"900000"`, API request timeout in milliseconds (15 minutes)
+- `DISABLE_BRIEF_MODE_STOP_HOOK` - `"1"`, feature flag to disable brief mode stop hook
+- `DISABLE_MICROCOMPACT` - `"1"`, disables microcompact behavior
+- `CLAUDE_CODE_DISABLE_CRON` - `"1"` or `""`, conditionally disables cron support
+- `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD` - `"1"`, feature flag to enable additional CLAUDE.md directories
 
 All spawn `env` variables are passed through transparently to the spawned process on native Linux.
 
@@ -517,13 +538,19 @@ Subscribes to the event stream for a VM/session. This is a long-lived connection
 **Params:**
 ```json
 {
-  "name": string,
-  "userDataName": string
+  "userDataName": string,
+  "userDataRoot": string
 }
 ```
 
+**Removed fields (v1.7196.0):**
+- `name` (string) - Removed. Desktop no longer sends the `name` field.
+
 **New optional fields (v1.4758.0):**
 - `userDataName` (string, optional): The Electron user data directory name (e.g., `"Claude"`). Sent by Desktop since v1.4758.0.
+
+**New optional fields (v1.7196.0):**
+- `userDataRoot` (string, optional): The root path of the Electron user data directory. Sent alongside `userDataName`.
 
 **Response (initial acknowledgment):**
 ```json
@@ -561,6 +588,8 @@ Returns the download/readiness status of the VM bundle.
 ```
 
 **Native Linux behavior:** Always returns `"ready"` since there is no VM bundle to download.
+
+**Changed in v1.7196.0:** Desktop now handles download status locally in the Electron app and no longer sends this RPC over the pipe. Our handler remains as a defensive no-op for backward compatibility.
 
 ---
 
@@ -882,6 +911,8 @@ These adaptations are applied in `native/backend.go` and `native/process.go` to 
 Desktop passes `--disallowedTools` containing tools handled by the VM runtime:
 `AskUserQuestion`, `mcp__cowork__allow_cowork_file_delete`, `mcp__cowork__present_files`, `mcp__cowork__launch_code_session`, `mcp__cowork__create_artifact`, `mcp__cowork__update_artifact`.
 
+**Added in v1.7196.0:** `mcp__cowork__propose_skills` was added to the disallowed tools list for dispatch/bridge sessions.
+
 On native Linux there is no VM runtime, so the entire flag and its value are removed -- all tools are available to the CLI directly.
 
 **Expanded in v1.1062.0** — bridge/dispatch disallowed list now also includes `mcp__cowork-onboarding__show_onboarding_role_picker`. CU-only mode adds: `mcp__workspace__bash`, `mcp__workspace__web_fetch`, `mcp__cowork__launch_code_session`, `mcp__cowork__present_files`, `mcp__cowork__request_cowork_directory`, `mcp__cowork__allow_cowork_file_delete`, `mcp__mcp-registry__search_mcp_registry`, `mcp__mcp-registry__suggest_connectors`, `mcp__plugins__search_plugins`, `mcp__plugins__suggest_plugin_install`. New built-in disallowed: `Bash`, `NotebookEdit`, `REPL`, `JavaScript`, `WebFetch`.
@@ -935,6 +966,8 @@ Claude Desktop uses three session types, identified by the `CLAUDE_CODE_TAGS` en
 | Regular cowork | `lam_session_type:chat` | *(not set)* | No | No |
 | Ditto orchestrator | `lam_session_type:agent` | `1` | **Yes** | **Yes** |
 | Dispatch child | `lam_session_type:dispatch_child` | *(not set)* | No | No |
+| Scheduled task | `lam_session_type:scheduled` | *(not set)* | No | No |
+| Radar | *(special)* | *(not set)* | No | No |
 
 **New in v1.2.234:** `dispatchCodeTasksPermissionMode` preference controls the permission mode for dispatch code tasks (`"default"`, `"acceptEdits"`, `"plan"`, `"auto"`, `"bypassPermissions"`). This is a Desktop UI setting — it does not affect the RPC protocol.
 
@@ -955,6 +988,14 @@ The long-running dispatch orchestrator agent (internally called "Ditto", visible
 ### Dispatch Child (`dispatch_child`)
 
 Child sessions spawned by the Ditto orchestrator to do actual work (coding, file operations, research). These complete and their transcripts are read by Ditto, who then replies to the phone.
+
+### Scheduled Task (`scheduled`) - NEW in v1.7196.0
+
+Sessions triggered by scheduled/cron tasks. Tagged with `lam_session_type:scheduled`. The `AskUserQuestion` tool is disallowed for scheduled sessions since there is no interactive user to respond. Otherwise behaves like a regular cowork session.
+
+### Radar - NEW in v1.7196.0
+
+A restricted session type with a special tag. Only the `mcp__radar__record_card` and `mcp__radar__retire_card` tools are allowed - all other tools are disallowed. Used for automated card management workflows.
 
 ---
 
@@ -998,6 +1039,8 @@ These methods exist in cowork-svc.exe (from binary string analysis) but are not 
 
 **v1.6608.0:** First protocol-level changes since v1.4758.0. `createDiskImage` RPC removed (Operon/Conda notebook engine removed from Desktop entirely, build size dropped ~3 MB). `spawn` no longer sends `mountConda` parameter. `addApprovedOauthToken` now sends only `{token}` (name field removed). `startVM` gains optional `cpuCount` (int) and `apiProbeURL` (string) fields. `isDebugLoggingEnabled` is now handled locally by Desktop and no longer sent over the pipe. New spawn env vars: `CLAUDE_CODE_DISABLE_AGENTS_FLEET`, `CLAUDE_TMPDIR`. Removed spawn env var: `CLAUDE_OAUTH_CLIENT_SECRET`. Protocol now at 21 active methods (plus 1 removed), 9 event types.
 
+**v1.7196.0:** Protocol compatibility update with no breaking changes - our code handles all changes via existing fallbacks. The `name` field was removed from `createVM`, `startVM`, `stopVM`, `isRunning`, `isGuestConnected`, and `subscribeEvents` (Desktop no longer sends it). New `userDataRoot` field added to `configure` and `subscribeEvents`. `getDownloadStatus` is now handled locally in the Electron app and no longer sent over the pipe (our handler remains as a defensive no-op). Two new session types: `scheduled` (for cron tasks, disallows AskUserQuestion) and `radar` (restricted to radar card tools only). `mcp__cowork__propose_skills` added to disallowed tools for dispatch/bridge sessions. 19 new spawn env vars added (see v1.7196.0 env vars section). Protocol remains at 21 active methods (plus 1 removed), 9 event types.
+
 ---
 
 ## Session Lifecycle Sequence
@@ -1008,14 +1051,16 @@ A typical Cowork session follows this sequence:
 Desktop                          cowork-svc
    │                                  │
    ├── configure(userDataName,    ──►│  (fire-and-forget, v1.4758.0+)
+   │     userDataRoot,                │
    │     sessionOnly:true)            │
    │                                  │
-   ├── stopVM(name) ────────────────►│  (cleanup from previous session)
+   ├── stopVM() ────────────────────►│  (cleanup from previous session)
    │                                  │
-   ├── subscribeEvents(name) ───────►│  (opens long-lived event connection)
+   ├── subscribeEvents(userDataName,►│  (opens long-lived event connection)
+   │     userDataRoot)                │
    │◄─── {subscribed: true} ─────────┤
    │                                  │
-   ├── startVM(name) ───────────────►│
+   ├── startVM(bundlePath,...) ─────►│
    │◄─── {success: true} ────────────┤
    │                                  │  (500ms delay)
    │◄─── startupStep CERTIFICATE ────┤  (started + completed)
@@ -1041,7 +1086,7 @@ Desktop                          cowork-svc
    │                                  │
    ├── kill(id, signal) ────────────►│  (1s delay, then kills process group)
    │                                  │
-   ├── stopVM(name) ────────────────►│
+   ├── stopVM() ────────────────────►│
    │◄─── vmStopped event ────────────┤
    │                                  │
 ```
