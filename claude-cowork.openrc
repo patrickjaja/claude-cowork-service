@@ -1,0 +1,72 @@
+#!/sbin/openrc-run
+# OpenRC init script for the Claude Cowork Service.
+#
+# The upstream daemon is designed to run as a systemd *user* service so that
+# spawned Claude Code processes inherit the user's Wayland/X11 environment.
+# OpenRC has no first-class user-service concept, so this script runs the
+# daemon as a system service that switches to the desktop user.
+#
+# REQUIRED CONFIGURATION (/etc/conf.d/claude-cowork):
+#   COWORK_USER  — username whose desktop session the service should attach to.
+#
+# Start the service AFTER the user's graphical session is up (e.g. from your
+# compositor's startup hooks: `hyprctl dispatch exec rc-service claude-cowork start`)
+# so that XDG_RUNTIME_DIR / Wayland sockets exist.
+
+name="Claude Cowork Service"
+description="Native Linux backend for Claude Desktop Cowork"
+
+command="/usr/bin/cowork-svc-linux"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+command_user="${COWORK_USER}"
+
+# Forward extra env from the user's running session if requested.
+# COWORK_IMPORT_ENV is a space-separated list of variable names to pull from
+# the desktop user's session-leader /proc/<pid>/environ. Defaults to the same
+# set the systemd unit imports.
+: "${COWORK_IMPORT_ENV:=WAYLAND_DISPLAY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DISPLAY DBUS_SESSION_BUS_ADDRESS HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK YDOTOOL_SOCKET}"
+
+depend() {
+	need dbus
+	after elogind
+	use display-manager
+}
+
+start_pre() {
+	if [ -z "${COWORK_USER}" ]; then
+		eerror "COWORK_USER is not set in /etc/conf.d/${RC_SVCNAME}"
+		return 1
+	fi
+
+	local uid
+	uid="$(id -u "${COWORK_USER}" 2>/dev/null)" || {
+		eerror "User '${COWORK_USER}' does not exist"
+		return 1
+	}
+
+	export XDG_RUNTIME_DIR="/run/user/${uid}"
+	if [ ! -d "${XDG_RUNTIME_DIR}" ]; then
+		ewarn "${XDG_RUNTIME_DIR} does not exist — start the service after the user's session is active"
+	fi
+
+	# Best-effort: scrape Wayland/X11 env from the desktop user's session.
+	# Walks processes owned by COWORK_USER and picks the first one whose
+	# /proc/<pid>/environ has WAYLAND_DISPLAY or DISPLAY set, then forwards
+	# the requested variables to the daemon.
+	local pid val var
+	pid=""
+	for p in $(pgrep -u "${uid}" 2>/dev/null); do
+		if grep -qzE '^(WAYLAND_DISPLAY|DISPLAY)=' "/proc/${p}/environ" 2>/dev/null; then
+			pid="${p}"
+			break
+		fi
+	done
+
+	if [ -n "${pid}" ] && [ -r "/proc/${pid}/environ" ]; then
+		for var in ${COWORK_IMPORT_ENV}; do
+			val="$(tr '\0' '\n' < "/proc/${pid}/environ" 2>/dev/null | sed -n "s/^${var}=//p" | head -n1)"
+			[ -n "${val}" ] && export "${var}=${val}"
+		done
+	fi
+}
