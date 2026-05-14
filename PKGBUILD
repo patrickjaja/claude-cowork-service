@@ -15,6 +15,7 @@ optdepends=('claude-desktop-bin: Unofficial Linux frontend for Claude Desktop Co
             'systemd: required for the systemd user service unit (provided by base on Arch)'
             'openrc: required to use the OpenRC init script (Artix Linux)')
 makedepends=('go')
+backup=('etc/conf.d/claude-cowork')
 
 install="${pkgname}.install"
 

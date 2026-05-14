@@ -25,10 +25,14 @@ clean:
 install: build
 	install -Dm755 $(BINARY) $(DESTDIR)$(PREFIX)/bin/$(BINARY)
 	install -Dm644 claude-cowork.service $(DESTDIR)$(PREFIX)/lib/systemd/user/claude-cowork.service
+	install -Dm755 claude-cowork.openrc $(DESTDIR)/etc/init.d/claude-cowork
+	install -Dm644 claude-cowork.confd $(DESTDIR)/etc/conf.d/claude-cowork
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(BINARY)
 	rm -f $(DESTDIR)$(PREFIX)/lib/systemd/user/claude-cowork.service
+	rm -f $(DESTDIR)/etc/init.d/claude-cowork
+	rm -f $(DESTDIR)/etc/conf.d/claude-cowork
 
 lint:
 	$(GO) vet ./...

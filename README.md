@@ -64,7 +64,7 @@ Updates arrive through your AUR helper (e.g. `yay -Syu`).
 
 ### Artix Linux (OpenRC)
 
-The same AUR package works on Artix — the PKGBUILD installs both the systemd
+The same AUR package works on Artix - the PKGBUILD installs both the systemd
 user unit and an OpenRC init script. After install, set your desktop user in
 `/etc/conf.d/claude-cowork`:
 
@@ -73,27 +73,35 @@ user unit and an OpenRC init script. After install, set your desktop user in
 COWORK_USER="yourusername"
 ```
 
+The startup hooks below use `sudo` to call `rc-service`. For unattended
+startup (no password prompt), add a sudoers rule:
+
+```sh
+# /etc/sudoers.d/claude-cowork
+yourusername ALL=(root) NOPASSWD: /sbin/rc-service claude-cowork start, /sbin/rc-service claude-cowork stop, /sbin/rc-service claude-cowork restart
+```
+
 Then start the service **after** your graphical session is up, so the init
 script can find the live `DISPLAY` / `WAYLAND_DISPLAY` /
 `DBUS_SESSION_BUS_ADDRESS` from your session leader (it scrapes
 `/proc/<pid>/environ`). Pick whichever startup hook matches your session:
 
 ```sh
-# Wayland — Hyprland (~/.config/hypr/hyprland.conf)
+# Wayland - Hyprland (~/.config/hypr/hyprland.conf)
 exec-once = sudo rc-service claude-cowork start
 
-# Wayland — Sway (~/.config/sway/config)
+# Wayland - Sway (~/.config/sway/config)
 exec sudo rc-service claude-cowork start
 
-# X11 — startx / xinit (~/.xinitrc, before `exec yourwm`)
+# X11 - startx / xinit (~/.xinitrc, before `exec yourwm`)
 sudo rc-service claude-cowork start &
 
-# X11 — login manager (~/.xprofile)
+# X11 - login manager (~/.xprofile)
 sudo rc-service claude-cowork start &
 ```
 
 The init script forwards the same set of display/IPC variables the systemd
-user unit imports via `systemctl --user import-environment` — `DISPLAY`
+user unit imports via `systemctl --user import-environment` - `DISPLAY`
 (X11), `WAYLAND_DISPLAY` (Wayland), `DBUS_SESSION_BUS_ADDRESS`,
 `XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`, and compositor-specific sockets
 (`HYPRLAND_INSTANCE_SIGNATURE`, `SWAYSOCK`, `YDOTOOL_SOCKET`). Missing
@@ -193,7 +201,7 @@ systemctl --user enable --now claude-cowork
 
 | Category | Dependency | Notes |
 |----------|-----------|-------|
-| **Runtime** | systemd | User service management (`systemctl --user`) |
+| **Runtime** | systemd or openrc | Service management - systemd (`systemctl --user`) or OpenRC (`rc-service`) |
 | **Runtime** | bash | Binary resolution in launcher scripts |
 | **Required** | Claude Code CLI | `claude` binary must be in `$PATH` - `npm i -g @anthropic-ai/claude-code` recommended (always latest); declared as `optdepends` in packaging so you control the version |
 | **Optional** | socat | Socket health check fallback |

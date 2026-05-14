@@ -7,7 +7,7 @@
 # daemon as a system service that switches to the desktop user.
 #
 # REQUIRED CONFIGURATION (/etc/conf.d/claude-cowork):
-#   COWORK_USER  — username whose desktop session the service should attach to.
+#   COWORK_USER  - username whose desktop session the service should attach to.
 #
 # Start the service AFTER the user's graphical session is up (e.g. from your
 # compositor's startup hooks: `hyprctl dispatch exec rc-service claude-cowork start`)
@@ -47,7 +47,7 @@ start_pre() {
 
 	export XDG_RUNTIME_DIR="/run/user/${uid}"
 	if [ ! -d "${XDG_RUNTIME_DIR}" ]; then
-		ewarn "${XDG_RUNTIME_DIR} does not exist — start the service after the user's session is active"
+		ewarn "${XDG_RUNTIME_DIR} does not exist - start the service after the user's session is active"
 	fi
 
 	# Best-effort: scrape Wayland/X11 env from the desktop user's session.
