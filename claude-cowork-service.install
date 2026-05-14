@@ -4,7 +4,7 @@ post_upgrade() {
       && [ -e /run/openrc/started/claude-cowork ]; then
     echo ">>> Restarting claude-cowork OpenRC service..."
     rc-service claude-cowork restart >/dev/null 2>&1 \
-      && echo "  Restarted" || echo "  Restart failed — restart manually"
+      && echo "  Restarted" || echo "  Restart failed - restart manually"
     return 0
   fi
 
