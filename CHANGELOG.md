@@ -5,16 +5,13 @@ All notable changes to claude-cowork-service will be documented in this file.
 ## Unreleased
 
 ### Changed
-- Updated upstream reference materials from Claude Desktop v1.6608.2 to v1.7196.0
-- Desktop no longer sends `name` field in createVM, startVM, stopVM, isRunning, isGuestConnected, subscribeEvents RPC methods (our code already handles this via fallbacks)
-- `getDownloadStatus` RPC no longer sent over pipe (handled locally in Electron app; our handler remains as defensive no-op)
-- New `userDataRoot` field added to `configure` and `subscribeEvents` params (silently ignored by Go unmarshaller)
-
-### Added
-- Documented 2 new session types: `scheduled` (cron tasks) and `radar` (restricted)
-- Documented 20+ new spawn environment variables passed through to CLI
-- Documented `mcp__cowork__propose_skills` in disallowed tools list
-- Upstream binary adds `vm/hostinfo.go` source and `github.com/anthropics/win-httpproxy` dependency
+- Updated upstream reference materials from Claude Desktop v1.7196.0 to v1.8089.0
+- `installSdk` RPC params changed from `{name}` to `{sdkSubpath, version}` upstream (our handler is a no-op, no functional impact; struct already had the new fields)
+- `handleCreateDiskImage` and `SetCondaDiskPath` removed from upstream binary strings (our no-op handlers remain for backward compatibility)
+- Electron 41.3.0 -> 41.6.1, Agent SDK 0.2.128 -> 0.3.142
+- New spawn env vars passed through transparently: `CLAUDE_CODE_HOST_PLATFORM`, `TZ`, `ENABLE_PROMPT_CACHING_1H`, `CLAUDE_CODE_SUBAGENT_MODEL`
+- `--cowork` CLI flag added by plugin system for sub-commands only (not main session spawn)
+- VM bundle unchanged - same SHA `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d` since v1.1.9669
 
 ## 1.0.57 — 2026-05-14
 
