@@ -1,4 +1,4 @@
-# Cowork RPC Protocol Reference - v1.7196.0
+# Cowork RPC Protocol Reference - v1.8089.0
 
 > **This document is the single source of truth for the protocol between Claude Desktop and cowork-svc.**
 > Re-validate on every upstream Claude Desktop version update.
@@ -470,9 +470,12 @@ Installs the SDK inside the VM guest.
 **Params:**
 ```json
 {
-  "name": string
+  "sdkSubpath": string,
+  "version": string
 }
 ```
+
+**Changed in v1.8089.0:** Parameters changed from `{name}` to `{sdkSubpath, version}`. Our handler is a no-op regardless.
 
 **Response:** `null`
 
@@ -1009,7 +1012,6 @@ These methods exist in cowork-svc.exe (from binary string analysis) but are not 
 |--------|---------|------|
 | `handlePassthrough` | Forwards arbitrary requests to VM | Low — we handle all methods directly |
 | `handlePersistentRPC` | Long-lived bidirectional RPC | Medium — may be used for future streaming features |
-| `SetCondaDiskPath` | Conda environment management (removed in v1.6608.0) | N/A - Conda/Operon removed from Desktop |
 | `InitSignatureVerification` / `verifyClientSignature` | Windows code signing verification | N/A — Linux doesn't use Windows code signing |
 | `GetClientInfo` / `GetClientInfoFromConn` | Caller authentication | N/A — we trust all connections on the Unix socket |
 
@@ -1042,6 +1044,8 @@ These methods exist in cowork-svc.exe (from binary string analysis) but are not 
 **v1.6608.0:** First protocol-level changes since v1.4758.0. `createDiskImage` RPC removed (Operon/Conda notebook engine removed from Desktop entirely, build size dropped ~3 MB). `spawn` no longer sends `mountConda` parameter. `addApprovedOauthToken` now sends only `{token}` (name field removed). `startVM` gains optional `cpuCount` (int) and `apiProbeURL` (string) fields. `isDebugLoggingEnabled` is now handled locally by Desktop and no longer sent over the pipe. New spawn env vars: `CLAUDE_CODE_DISABLE_AGENTS_FLEET`, `CLAUDE_TMPDIR`. Removed spawn env var: `CLAUDE_OAUTH_CLIENT_SECRET`. Protocol now at 21 active methods (plus 1 removed), 9 event types.
 
 **v1.7196.0:** Protocol compatibility update with no breaking changes - our code handles all changes via existing fallbacks. The `name` field was removed from `createVM`, `startVM`, `stopVM`, `isRunning`, `isGuestConnected`, and `subscribeEvents` (Desktop no longer sends it). New `userDataRoot` field added to `configure` and `subscribeEvents`. `getDownloadStatus` is now handled locally in the Electron app and no longer sent over the pipe (our handler remains as a defensive no-op). Two new session types: `scheduled` (for cron tasks, disallows AskUserQuestion) and `radar` (restricted to radar card tools only). `mcp__cowork__propose_skills` added to disallowed tools for dispatch/bridge sessions. 19 new spawn env vars added (see v1.7196.0 env vars section). Protocol remains at 21 active methods (plus 1 removed), 9 event types.
+
+**v1.8089.0:** Rebuild with no protocol-level changes. `installSdk` parameters changed from `{name}` to `{sdkSubpath, version}` (our handler is a no-op, so no functional impact). `handleCreateDiskImage` and `SetCondaDiskPath` removed from upstream binary strings (our no-op handlers remain for backward compatibility). New spawn env vars: `CLAUDE_CODE_HOST_PLATFORM` (host platform), `TZ` (timezone), `ENABLE_PROMPT_CACHING_1H` (prompt caching), `CLAUDE_CODE_SUBAGENT_MODEL` (conditional subagent model) - all pass through transparently. `--cowork` CLI flag added by plugin system for sub-commands only (not main session spawn). Electron 41.6.1 (was 41.3.0), Agent SDK 0.3.142 (was 0.2.128). Protocol remains at 21 active methods (plus 1 removed), 9 event types.
 
 ---
 
