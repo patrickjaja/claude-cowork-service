@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -73,17 +71,53 @@ type Backend struct {
 	memory  int
 	cpus    int
 
+	commandWrapper CommandWrapper
+
 	tracker     *processTracker
 	subscribers map[uint64]func(event interface{})
 	nextSubID   uint64
 	mu          sync.RWMutex
 }
 
+// BackendOptions controls optional behavior layered on top of the native
+// protocol implementation.
+type BackendOptions struct {
+	CommandWrapper CommandWrapper
+}
+
+// ResolvedMountSpec is a mount after home/root-relative path resolution.
+type ResolvedMountSpec struct {
+	Path string
+	Mode string
+}
+
+// SpawnContext contains the host-side session state available to command
+// wrappers.
+type SpawnContext struct {
+	Name           string
+	ID             string
+	SessionPrefix  string
+	RealSessionDir string
+	Mounts         map[string]pipe.MountSpec
+	ResolvedMounts map[string]ResolvedMountSpec
+	RawParams      []byte
+}
+
+// CommandWrapper may replace the final command that processTracker launches.
+// It runs after native path, env, and argument adaptation has completed.
+type CommandWrapper func(ctx SpawnContext, cmd string, args []string, env map[string]string, cwd string) (wrappedCmd string, wrappedArgs []string, wrappedEnv map[string]string, wrappedCwd string, err error)
+
 // NewBackend creates a native backend that runs processes on the host.
 func NewBackend(debug bool) *Backend {
+	return NewBackendWithOptions(debug, BackendOptions{})
+}
+
+// NewBackendWithOptions creates a native backend with optional launch behavior.
+func NewBackendWithOptions(debug bool, opts BackendOptions) *Backend {
 	b := &Backend{
-		debug:       debug,
-		subscribers: make(map[uint64]func(event interface{})),
+		debug:          debug,
+		commandWrapper: opts.CommandWrapper,
+		subscribers:    make(map[uint64]func(event interface{})),
 	}
 	b.tracker = newProcessTracker(b.emitEvent, debug)
 	return b
@@ -121,11 +155,6 @@ func (b *Backend) StartVM(name string, bundlePath string, memoryGB int) error {
 
 	log.Printf("[native] startVM %s — running natively on host", name)
 
-	// Run session integrity checks in background (non-blocking).
-	// Scans for half-written JSONL files, orphaned pre-stop backups,
-	// and other signs of previous unclean shutdown.
-	go b.checkSessionIntegrity(name)
-
 	// Emit startup events asynchronously to avoid race with subscribeEvents
 	// (both calls arrive simultaneously on different connections)
 	go func() {
@@ -142,32 +171,15 @@ func (b *Backend) StartVM(name string, bundlePath string, memoryGB int) error {
 }
 
 func (b *Backend) StopVM(name string) error {
-	if b.debug {
-		log.Printf("[native] stopVM %s — initiating graceful shutdown", name)
-	}
-
-	// Backup session files before killing processes.
-	// This preserves the queue JSONL state in case the graceful drain
-	// in kill() doesn't complete before the process is terminated.
-	home, _ := os.UserHomeDir()
-	sessionDir := filepath.Join(home, ".local", "share", "claude-cowork", "sessions", name)
-	if _, err := os.Stat(sessionDir); err == nil {
-		backupDir := sessionDir + ".pre-stop-" + time.Now().Format("20060102-150405")
-		if cpErr := exec.Command("cp", "-a", sessionDir, backupDir).Run(); cpErr != nil {
-			log.Printf("[native] WARNING: pre-stop backup failed: %v", cpErr)
-		} else {
-			log.Printf("[native] pre-stop backup created: %s", backupDir)
-			// Prune old backups: keep only the 5 most recent
-			go pruneBackups(sessionDir, 5)
-		}
-	}
-
 	b.mu.Lock()
 	b.started = false
 	b.mu.Unlock()
 
 	b.tracker.killAll()
 
+	if b.debug {
+		log.Printf("[native] stopVM %s", name)
+	}
 	b.emitEvent(map[string]string{"type": "vmStopped", "name": name})
 	return nil
 }
@@ -185,7 +197,7 @@ func (b *Backend) IsGuestConnected(name string) (bool, error) {
 	return true, nil
 }
 
-func (b *Backend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, _ []byte) (string, error) {
+func (b *Backend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, rawParams []byte) (string, error) {
 	if b.debug {
 		log.Printf("[native] spawn: %s %v (cwd=%s, mounts=%v)", cmd, args, cwd, mounts)
 	}
@@ -200,8 +212,13 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		return "", fmt.Errorf("creating session dir: %w", err)
 	}
 
+	resolvedMounts := make(map[string]ResolvedMountSpec, len(mounts))
 	for mountName, mount := range mounts {
 		hostPath := resolveSubpath(home, mount.Path)
+		resolvedMounts[mountName] = ResolvedMountSpec{
+			Path: hostPath,
+			Mode: mount.Mode,
+		}
 		// Skip mounts whose target is not a directory (e.g. app.asar).
 		// Claude Desktop passes every mount as --add-dir to the CLI,
 		// which rejects non-directory paths.
@@ -246,208 +263,50 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		}
 	}
 
-	// Create /sessions/<name> symlink so absolute VM paths resolve.
-	// MkdirAll and Symlink both fail without root, which is the common case —
-	// the caller already copes by path-remapping cwd/env in that mode.
-	topSessionDir := "/sessions/" + name
-	if err := os.MkdirAll("/sessions", 0755); err != nil && b.debug {
-		log.Printf("[native] MkdirAll /sessions: %v (expected without root)", err)
-	}
-	if _, err := os.Lstat(topSessionDir); err != nil {
-		if err := os.Symlink(realSessionDir, topSessionDir); err != nil && b.debug {
-			log.Printf("[native] symlink %s → %s: %v (expected without root)", topSessionDir, realSessionDir, err)
-		}
-	}
-
-	// Session prefix used for path remapping (VM paths ↔ real paths)
-	sessionPrefix := "/sessions/" + name
-
-	// If /sessions isn't writable (no root), remap cwd and env to real paths
-	if _, err := os.Stat(cwd); err != nil {
-		// Replace the /sessions/<name> prefix with the real session dir,
-		// preserving any sub-path (e.g. /mnt/outputs). Using filepath.Base
-		// here would drop everything but the final segment, turning
-		// /sessions/<name>/mnt/outputs into realSessionDir/outputs and
-		// triggering a child-side chdir() failure that surfaces as a
-		// misleading "fork/exec: no such file or directory" error.
-		var remapped string
-		if cwd == sessionPrefix || strings.HasPrefix(cwd, sessionPrefix+"/") {
-			remapped = realSessionDir + cwd[len(sessionPrefix):]
-		} else {
-			// Fallback: cwd doesn't reference the session prefix at all.
-			remapped = filepath.Join(realSessionDir, filepath.Base(cwd))
-		}
-		if b.debug {
-			log.Printf("[native] remap cwd: %s → %s", cwd, remapped)
-		}
-		cwd = remapped
-
-		// Remap env vars and args pointing to /sessions/<name>
-		for k, v := range env {
-			if len(v) >= len(sessionPrefix) && v[:len(sessionPrefix)] == sessionPrefix {
-				env[k] = realSessionDir + v[len(sessionPrefix):]
-				if b.debug {
-					log.Printf("[native] remap env %s: %s", k, env[k])
-				}
-			}
-		}
-		for i, a := range args {
-			if len(a) >= len(sessionPrefix) && a[:len(sessionPrefix)] == sessionPrefix {
-				args[i] = realSessionDir + a[len(sessionPrefix):]
-				if b.debug {
-					log.Printf("[native] remap arg[%d]: %s", i, args[i])
-				}
-			}
-		}
-	}
-
-	// Use the real workspace directory as cwd instead of the session directory.
-	// The session's mnt/ dir uses symlinks for mounts, but Glob doesn't follow
-	// directory symlinks, so files aren't found. Setting cwd to the actual
-	// workspace path lets the model search real files directly.
-	for mountName, mount := range mounts {
-		if strings.HasPrefix(mountName, ".") || mountName == "uploads" || mountName == "outputs" {
-			continue
-		}
-		wsPath := resolveSubpath(home, mount.Path)
-		if info, err := os.Stat(wsPath); err == nil && info.IsDir() {
-			if b.debug {
-				log.Printf("[native] using workspace mount %q as cwd: %s (was %s)", mountName, wsPath, cwd)
-			}
-			cwd = wsPath
-		}
-		break
-	}
-
-	// Remove empty env vars that might confuse auth (e.g. empty ANTHROPIC_API_KEY)
+	// Drop empty env vars that might confuse auth (e.g. empty ANTHROPIC_API_KEY).
 	for k, v := range env {
 		if v == "" {
 			delete(env, k)
 		}
 	}
 
-	// SDK MCP servers (dispatch, cowork, session_info, etc.) are kept in
-	// --mcp-config as {type:"sdk"} stubs. The CLI sends control_request
-	// messages on stdout for MCP tool calls, which flow through our event
-	// stream to Claude Desktop. Desktop's session manager handles them and
-	// sends control_response back via writeStdin — identical to VM mode.
-	// No stripping or proxying needed on our side.
-	if b.debug {
-		for i, a := range args {
-			if a == "--mcp-config" && i+1 < len(args) {
-				log.Printf("[native] --mcp-config passed through (SDK MCP proxy via event stream): %s", args[i+1])
-				break
+	// Fall back to the real session dir if the caller sent a cwd that doesn't
+	// exist on the host (e.g. a VM-style /sessions/<name> path from a client
+	// that hasn't been taught the native layout yet). Without this, exec fails
+	// with a misleading "fork/exec <cmd>: no such file or directory" — the
+	// missing path is c.Dir, not the binary.
+	//
+	// Skip this in wrapped mode: sandbox cwds live inside the sandbox and may
+	// not exist on the host, but the wrapper is responsible for choosing a
+	// valid host-side c.Dir for itself.
+	if cwd != "" && b.commandWrapper == nil {
+		if _, err := os.Stat(cwd); err != nil {
+			if b.debug {
+				log.Printf("[native] cwd %s missing, falling back to %s", cwd, realSessionDir)
 			}
+			cwd = realSessionDir
 		}
 	}
 
-	// Strip --disallowedTools entirely on native Linux.
-	//
-	// Desktop passes --disallowedTools for VM-based sessions where certain tools
-	// (present_files, allow_cowork_file_delete, launch_code_session, create_artifact,
-	// update_artifact) are handled by the VM runtime rather than the CLI. On native
-	// Linux there is no VM — the CLI must handle all tools directly.
-	//
-	// Default --disallowedTools from Desktop (as of v1.569.0, unchanged from v1.1.9669):
-	//   AskUserQuestion, mcp__cowork__allow_cowork_file_delete,
-	//   mcp__cowork__present_files, mcp__cowork__launch_code_session,
-	//   mcp__cowork__create_artifact, mcp__cowork__update_artifact
-	//
-	// We remove the entire flag so all tools are available to the CLI.
-	for i, a := range args {
-		if a == "--disallowedTools" && i+1 < len(args) {
-			if b.debug {
-				log.Printf("[native] stripping --disallowedTools (VM-only restriction): %s", args[i+1])
-			}
-			// Remove both the flag and its value by blanking them
-			args = append(args[:i], args[i+2:]...)
-			break
+	if b.commandWrapper != nil {
+		cmd = resolveExecutable(cmd, b.debug)
+		ctx := SpawnContext{
+			Name:           name,
+			ID:             id,
+			SessionPrefix:  "/sessions/" + name,
+			RealSessionDir: realSessionDir,
+			Mounts:         mounts,
+			ResolvedMounts: resolvedMounts,
+			RawParams:      rawParams,
+		}
+		var err error
+		cmd, args, env, cwd, err = b.commandWrapper(ctx, cmd, args, env, cwd)
+		if err != nil {
+			return "", err
 		}
 	}
 
-	// Inject --brief flag when Desktop signals dispatch/agent mode via CLAUDE_CODE_BRIEF=1.
-	// Desktop passes this env var for ditto/dispatch agent sessions (which have SendUserMessage
-	// in --tools), but NOT for regular cowork sessions. The --brief flag ensures the CLI
-	// registers SendUserMessage in its tool list (fixed in CLI v2.1.86).
-	if env["CLAUDE_CODE_BRIEF"] == "1" {
-		hasBrief := false
-		for _, a := range args {
-			if a == "--brief" {
-				hasBrief = true
-				break
-			}
-		}
-		if !hasBrief {
-			args = append(args, "--brief")
-			if b.debug {
-				log.Printf("[native] injected --brief flag (CLAUDE_CODE_BRIEF=1)")
-			}
-		}
-
-		// Inject file-delivery instructions for dispatch/agent sessions.
-		// The user is on a remote client (phone/browser) and can't access local paths.
-		// Without this, the model often uses computer:// markdown links instead of the
-		// attachments parameter, and files never reach the remote user.
-		//
-		// Also tell the model the real outputs path so it doesn't waste tool calls
-		// trying /sessions/ paths (which only exist when /sessions is root-writable).
-		outputsHint := ""
-		for mountName, mount := range mounts {
-			if mountName == "outputs" {
-				hostOutputs := resolveSubpath(home, mount.Path)
-				outputsHint = " The outputs directory for this session is at: " + hostOutputs +
-					" — write files there directly. The /sessions/ directory does NOT exist in this environment."
-				break
-			}
-		}
-		args = append(args, "--append-system-prompt",
-			"IMPORTANT: When sharing files with the user, you MUST pass the absolute file path "+
-				"in the `attachments` array parameter of SendUserMessage. Do NOT use computer:// "+
-				"links or markdown file links — the user is on a remote client and cannot access "+
-				"local paths. After creating a file, call present_files first, then call "+
-				"SendUserMessage with both a message and the attachments array containing the file paths."+
-				outputsHint)
-		if b.debug {
-			log.Printf("[native] injected --append-system-prompt for dispatch file delivery (outputsHint=%q)", outputsHint)
-		}
-	}
-
-	// Build mount path remappings (forward and reverse).
-	//
-	// Forward (stdin, Desktop→CLI): session/mnt/<mount> → real target path
-	//   Glob doesn't follow directory symlinks, so the model must see real paths.
-	//
-	// Reverse (stdout, CLI→Desktop): real target path → VM /sessions/<name>/mnt/<mount>
-	//   Desktop's MCP tools expect VM-style paths. Without reverse mapping, tools
-	//   like present_files fail because Desktop can't resolve native Linux paths.
-	var mountRemap []pathRemap
-	var reverseMountRemap []pathRemap
-	for mountName, mount := range mounts {
-		hostPath := resolveSubpath(home, mount.Path)
-		mntPath := realSessionDir + "/mnt/" + mountName
-		vmMntPath := sessionPrefix + "/mnt/" + mountName
-		if mntPath != hostPath {
-			mountRemap = append(mountRemap, pathRemap{
-				from: []byte(mntPath),
-				to:   []byte(hostPath),
-			})
-			if b.debug {
-				log.Printf("[native] mount remap (fwd): %s → %s", mntPath, hostPath)
-			}
-		}
-		// Reverse: real host path → VM mount path (for outgoing MCP requests)
-		if hostPath != vmMntPath {
-			reverseMountRemap = append(reverseMountRemap, pathRemap{
-				from: []byte(hostPath),
-				to:   []byte(vmMntPath),
-			})
-			if b.debug {
-				log.Printf("[native] mount remap (rev): %s → %s", hostPath, vmMntPath)
-			}
-		}
-	}
-
-	return b.tracker.spawn(id, cmd, args, env, cwd, sessionPrefix, realSessionDir, mountRemap, reverseMountRemap)
+	return b.tracker.spawn(id, cmd, args, env, cwd)
 }
 
 func (b *Backend) Kill(processID string, signal string) error {
@@ -583,99 +442,5 @@ func (b *Backend) emitEvent(event interface{}) {
 
 	for _, cb := range subs {
 		go cb(event)
-	}
-}
-
-// checkSessionIntegrity runs background integrity checks on session files
-// for the given VM name. This detects signs of previous unclean shutdowns
-// (truncated JSONL, orphaned backups) and logs warnings.
-//
-// This intentionally does NOT auto-repair — that's left to cowork-session-doctor
-// which can be run interactively. We only log diagnostics here.
-func (b *Backend) checkSessionIntegrity(name string) {
-	home, _ := os.UserHomeDir()
-	sessionsDir := filepath.Join(home, ".local", "share", "claude-cowork", "sessions")
-
-	if _, err := os.Stat(sessionsDir); err != nil {
-		return
-	}
-
-	entries, err := os.ReadDir(sessionsDir)
-	if err != nil {
-		return
-	}
-
-	backupCount := 0
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		eName := e.Name()
-
-		// Count orphaned pre-stop backups
-		if strings.Contains(eName, ".pre-stop-") {
-			backupCount++
-			continue
-		}
-
-		// Check session directories for JSONL integrity
-		sessionDir := filepath.Join(sessionsDir, eName)
-		auditPath := filepath.Join(sessionDir, "audit.jsonl")
-		if info, err := os.Stat(auditPath); err == nil {
-			if info.Size() == 0 {
-				log.Printf("[native] INTEGRITY WARNING: empty audit.jsonl in session %s", eName)
-			} else {
-				// Check if audit.jsonl ends with a complete line (no truncation)
-				f, err := os.Open(auditPath)
-				if err == nil {
-					buf := make([]byte, 1)
-					f.Seek(info.Size()-1, 0)
-					n, _ := f.Read(buf)
-					if n > 0 && buf[0] != '\n' {
-						log.Printf("[native] INTEGRITY WARNING: audit.jsonl in session %s may be truncated (no trailing newline)", eName)
-					}
-					f.Close()
-				}
-			}
-		}
-	}
-
-	if backupCount > 0 {
-		log.Printf("[native] startup: found %d pre-stop backup(s) in %s", backupCount, sessionsDir)
-	}
-}
-
-// pruneBackups removes old pre-stop backup directories, keeping only the
-// `keep` most recent ones. Backups are identified by the ".pre-stop-" suffix
-// pattern in the session directory's parent.
-func pruneBackups(sessionDir string, keep int) {
-	parent := filepath.Dir(sessionDir)
-	base := filepath.Base(sessionDir)
-	prefix := base + ".pre-stop-"
-
-	entries, err := os.ReadDir(parent)
-	if err != nil {
-		return
-	}
-
-	var backups []string
-	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), prefix) {
-			backups = append(backups, filepath.Join(parent, e.Name()))
-		}
-	}
-
-	// Sort lexicographically (timestamp suffix ensures chronological order)
-	sort.Strings(backups)
-
-	// Remove oldest backups, keeping `keep` most recent
-	if len(backups) > keep {
-		for _, old := range backups[:len(backups)-keep] {
-			if err := os.RemoveAll(old); err != nil {
-				log.Printf("[native] failed to prune backup %s: %v", old, err)
-			} else {
-				log.Printf("[native] pruned old backup: %s", old)
-			}
-		}
 	}
 }

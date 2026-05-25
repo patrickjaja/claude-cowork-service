@@ -22,13 +22,13 @@ in
         The cowork service invokes the `claude` CLI internally, which must
         be reachable in the systemd service PATH.
 
-        If Claude Code is installed via npm global:
-          extraPath = [ pkgs.nodejs "/home/user/.npm-global" ];
+        If Claude Code is installed via Bun global:
+          extraPath = [ pkgs.bun "/home/user/.bun/bin" ];
 
         If Claude Code is available as a Nix package:
           extraPath = [ pkgs.claude-code ];
       '';
-      example = lib.literalExpression ''[ pkgs.nodejs "/home/user/.npm-global" ]'';
+      example = lib.literalExpression ''[ pkgs.bun "/home/user/.bun/bin" ]'';
     };
   };
 
@@ -37,7 +37,7 @@ in
       description = "Claude Cowork Service (native Linux backend)";
       after = [ "default.target" ];
       wantedBy = [ "default.target" ];
-      path = cfg.extraPath;
+      path = [ cfg.package pkgs.bubblewrap pkgs.socat pkgs.ripgrep ] ++ cfg.extraPath;
       serviceConfig = {
         # Import Wayland/display environment from the user session so spawned processes
         # (Claude Code CLI) can access display, clipboard, and D-Bus services.

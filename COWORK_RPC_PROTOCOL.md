@@ -241,7 +241,7 @@ Spawns a command as a child process. This is the most complex method in the prot
 
 **New fields (v1.1.9669):**
 - `isResume` (boolean, default `false`): Whether this is a resumed session.
-- `allowedDomains` (array of strings, optional): Network egress allowlist for the spawned process. Ignored on native Linux (no network isolation).
+- `allowedDomains` (array of strings, optional): Network egress allowlist for the spawned process. Ignored on native Linux, enforced by sandbox-runtime in sandbox mode, and forwarded to the guest in KVM mode.
 - `oneShot` (boolean, default `false`): For one-shot command execution.
 - `mountSkeletonHome` (boolean, default `false`): Whether to mount a skeleton home directory.
 
@@ -299,7 +299,7 @@ These mounts are only present when plugins are configured for the session. On na
 - `CLAUDE_CODE_DISABLE_CRON` - `"1"` or `""`, conditionally disables cron support
 - `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD` - `"1"`, feature flag to enable additional CLAUDE.md directories
 
-All spawn `env` variables are passed through transparently to the spawned process on native Linux.
+All spawn `env` variables are passed through transparently to the spawned process on native and sandbox Linux.
 
 **Response:**
 ```json
@@ -330,6 +330,8 @@ All spawn `env` variables are passed through transparently to the spawned proces
 13. **Process group creation:** Sets `Setpgid: true` so the entire process group can be killed.
 14. **Nested session prevention:** Strips `CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT` environment variables to prevent "cannot be launched inside another Claude Code session" errors.
 15. **Output streaming:** Both stdout and stderr are streamed, with stderr content emitted as `stdout` events (Claude Code writes stream-json on stderr -- see Discovery #10).
+
+**Sandbox Linux behavior:** Applies the same native Linux adaptations above, remaps host paths back to sandbox-visible `/sessions/<name>/mnt/<mount>` paths, then wraps the final command with `srt --config-json-base64 <config> -c <command>`. The backend loads an editable baseline from `~/.config/claude-cowork-service/sandbox.yaml` (or `COWORK_SANDBOX_CONFIG`), creates it on first use, and merges spawn `allowedDomains` plus KVM-like `linux.bindMounts` for `/sessions/...` and `/mnt/.virtiofs-root/shared/...`. The generated baseline uses private tmpfs for `/tmp` and `/var/tmp` and re-allows `/var/lib`.
 
 ---
 

@@ -4,7 +4,8 @@
 # Usage: build-deb.sh <binary_path> <version> [arch]
 #
 # Creates claude-cowork-service_<version>_<arch>.deb in the current directory.
-# The package contains the static Go binary + systemd user service.
+# The package contains the Go binary, the matching sandbox-runtime `srt`
+# binary, and the systemd user service.
 #
 # arch defaults to "amd64". Pass "arm64" for ARM64 builds.
 
@@ -16,6 +17,20 @@ ARCH="${3:-amd64}"
 
 if [ ! -f "$BINARY" ]; then
   echo "ERROR: Binary not found: $BINARY"
+  exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+case "$ARCH" in
+  amd64|arm64) SRT_ARCH="$ARCH" ;;
+  *) echo "ERROR: Unsupported arch for srt: $ARCH"; exit 1 ;;
+esac
+SRT_BINARY="${SRT_BINARY:-$REPO_ROOT/srt/srt-linux-$SRT_ARCH}"
+if [ ! -f "$SRT_BINARY" ]; then
+  echo "ERROR: SRT binary not found: $SRT_BINARY"
+  echo "       Run: make build-srt"
   exit 1
 fi
 
@@ -34,10 +49,9 @@ mkdir -p "$BUILD_DIR/usr/lib/systemd/user"
 
 # Install binary
 install -m755 "$BINARY" "$BUILD_DIR/usr/bin/cowork-svc-linux"
+install -m755 "$SRT_BINARY" "$BUILD_DIR/usr/bin/srt-cowork"
 
 # Install systemd service
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 install -m644 "$REPO_ROOT/claude-cowork.service" "$BUILD_DIR/usr/lib/systemd/user/claude-cowork.service"
 
 # Create control file
@@ -53,7 +67,7 @@ Description: Native Linux backend for Claude Desktop's Cowork feature
 Homepage: https://github.com/patrickjaja/claude-cowork-service
 Section: utils
 Priority: optional
-Recommends: systemd
+Depends: systemd, bubblewrap, socat, ripgrep
 Provides: claude-cowork-service
 EOF
 

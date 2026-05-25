@@ -4,6 +4,18 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Added
+- **Sandbox backend** (`-backend=sandbox`) — new `sandbox/` package wrapping spawned commands in the `srt-cowork` (sandbox-runtime) CLI for filesystem and network isolation. Selectable via `-backend=sandbox` flag or `COWORK_VM_BACKEND=sandbox` env var. Implements the same `Backend` interface as `native` and `kvm`; reuses native-style host execution but isolates each spawned process through `srt-cowork`.
+- **Sandbox config file** (`~/.config/claude-cowork-service/sandbox.yaml`) — YAML-based config with baseline filesystem rules (`denyRead`, `allowRead`, `allowWrite`). Auto-generates a sensible default on first run; per-session writable mounts and allowed domains are layered on top by the backend.
+- **`network.allowAllUnixSockets` config option** (`sandbox/backend.go`, `sandbox/config.go`) — opt-in flag plumbed through to `srt-cowork`'s native `network.allowAllUnixSockets` field. Lets sandboxed sessions connect to host Unix sockets (Docker daemon, ssh-agent, etc.). Defaults to `false`; JSON tag uses `omitempty` so the field is only emitted when on, preserving SRT's secure default. The companion `allowUnixSockets` path-allowlist from upstream is intentionally not exposed because it's documented as macOS-only — Linux's seccomp cannot filter sockets by path, so the flag is all-or-nothing on this platform.
+- **`sandbox-runtime` submodule** (`sandbox-runtime/`) — vendored fork of the upstream sandbox-runtime project, tracked as a git submodule. Built into the `srt-cowork` binary via `make build-srt`. Currently at upstream release 0.0.51.
+- **`make build-srt` target** — builds `srt-cowork` (bun-compiled executable with appended JavaScript payload) for the current platform and both Linux architectures.
+- **`srt-cowork` shipped in all packaging** — DEB, RPM, Arch (PKGBUILD), and Nix packages now install `srt-cowork` to `/usr/bin/srt-cowork` alongside `cowork-svc-linux`. GitHub Actions release workflow builds and uploads `srt-linux-amd64` / `srt-linux-arm64` plus SHA-256 checksums as release artifacts.
+- Documented 2 new session types: `scheduled` (cron tasks) and `radar` (restricted)
+- Documented 20+ new spawn environment variables passed through to CLI
+- Documented `mcp__cowork__propose_skills` in disallowed tools list
+- Upstream binary adds `vm/hostinfo.go` source and `github.com/anthropics/win-httpproxy` dependency
+
 ### Changed
 - Updated upstream reference materials from Claude Desktop v1.7196.0 to v1.8555.2
 - `installSdk` RPC params changed from `{name}` to `{sdkSubpath, version}` upstream (our handler is a no-op, no functional impact; struct already had the new fields)
@@ -17,8 +29,36 @@ All notable changes to claude-cowork-service will be documented in this file.
 - New Desktop-internal MCP tools: `archive_session`, `search_session_transcripts`, `list_connectors`, `list_plugins`, `suggest_skills`
 - `BRIDGE_DISALLOWED_TOOLS` expanded: `mcp__cowork__create_artifact`, `mcp__cowork__update_artifact` added
 - VM bundle unchanged - same SHA `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d` since v1.1.9669
+- **Updated upstream reference materials from Claude Desktop v1.6608.2 to v1.7196.0**
+- Desktop no longer sends `name` field in createVM, startVM, stopVM, isRunning, isGuestConnected, subscribeEvents RPC methods (our code already handles this via fallbacks)
+- `getDownloadStatus` RPC no longer sent over pipe (handled locally in Electron app; our handler remains as defensive no-op)
+- New `userDataRoot` field added to `configure` and `subscribeEvents` params (silently ignored by Go unmarshaller)
+- **Renamed `srt` binary to `srt-cowork`** across the entire codebase — GitHub workflows, sandbox tests, DEB/RPM/Arch/Nix packaging, install scripts, Makefile install paths, and the default `SRT` env var resolution in `main.go`. The longer name avoids conflicts with other `srt` binaries on user systems (notably the unrelated Secure Reliable Transport CLI).
+- **Native backend simplified** (`native/backend.go`, `native/process.go`) — removed extensive path remapping logic (`/sessions/<name>` ↔ host paths, `mnt/<mount>` rewriting), reverse mount remapping for outgoing MCP `control_request` messages, `mountRemap` / `reverseMountRemap` flags, and the local `mcp__cowork__present_files` interception. The native backend is now a thin host-execution layer; isolation and path semantics are delegated to the sandbox backend or skipped entirely on plain `native`.
+- **`Backend.Spawn` signature simplified** — removed unused parameters (`vmPrefix`, `reverseMountRemap`, `realPrefix`, etc.) that only made sense for the old VM-prefix world.
+- **RPC log filtering** (`pipe/handlers.go`) — replaced ad-hoc per-method checks with a `Handler.suppressRPCLog` set. Currently suppresses `isGuestConnected` and `isProcessRunning` keepalive pings from debug output so logs stay readable on busy sessions.
+
+### Fixed
+- **`srt-cowork` binary corruption across packaging** — `srt-cowork` is a `bun`-compiled executable with its JS payload appended to the end of the file; default strip / debug-split passes clip the appended payload and the binary degrades to vanilla `bun` (prints the bun help text on invocation). Disabled stripping in every packaging pipeline:
+  - **Nix** (`packaging/nix/package.nix`): `dontStrip = true`
+  - **Arch** (`PKGBUILD`, `packaging/arch/build-pkg.sh`): `options=('!strip' '!debug')`
+  - **RPM** (`packaging/rpm/claude-cowork-service.spec`): `%global __os_install_post %{nil}` to disable all post-install binary processing
+  - **CI** (`.github/workflows/build-and-release.yml`): post-build `srt-cowork --help` smoke check that fails the workflow if the binary has degraded to plain `bun`
+- **Nix build inputs for sandbox** (`packaging/nix/package.nix`) — fixed missing `yaml` / SRT input plumbing so the Nix build picks up the sandbox-runtime binary and `gopkg.in/yaml.v3` dependency consistently across CI and local builds.
+
+### Removed
+- **PR #41 (graceful shutdown / pre-kill backup / session integrity check / `cowork-session-doctor` Python tool) intentionally not merged into `feature/sandbox`** — released on main as v1.0.56 ([@shmohammadi86](https://github.com/shmohammadi86)) but incompatible with the simplified hostloop-only backend on this branch.
 
 ## 1.0.57 — 2026-05-14
+
+### Added
+- **OpenRC support for Artix Linux** ([#43](https://github.com/patrickjaja/claude-cowork-service/pull/43)) — `claude-cowork.openrc` init script mirrors the systemd user unit's behaviour: reads `COWORK_USER` from `/etc/conf.d/claude-cowork` and scrapes `WAYLAND_DISPLAY` / `DISPLAY` / `DBUS_SESSION_BUS_ADDRESS` / etc. from the user's session leader at start time so spawned Claude Code processes can reach the display.
+- **`claude-cowork.confd`** — documented config defaults consumed by the OpenRC init script.
+- **README Artix install section** — documents the install path and the sudoers rule needed for passwordless `rc-service` invocations.
+
+### Changed
+- **PKGBUILD `depends` / `optdepends` reorganised** — dropped `systemd` from hard `depends` (it ships in `base` on Arch); both `systemd` and `openrc` are now `optdepends`. The Makefile gained OpenRC file install/uninstall targets for source builds, and `backup=('etc/conf.d/claude-cowork')` was added so pacman preserves user edits to the conf.d file across upgrades.
+- **`claude-cowork-service.install`** — restart hook now handles both systemd and OpenRC when the service is running on upgrade.
 
 ## 1.0.56 - 2026-05-11
 
