@@ -4,6 +4,9 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- Removed the stdin readiness wait in the native backend (`writeStdin`): it waited for the CLI's first output before writing, but with `--input-format stream-json` (all Desktop-spawned sessions) the CLI emits nothing until it receives input, so the 5s timeout fired deterministically and added a fixed ~5s startup latency to every session (`Spawn succeeded` ~5030ms vs <1s). The write path already guards the real failure modes with its own 10s timeout and the `<-lp.done` process-exit cases; a broken pipe is only possible after process exit, which those guards cover. Especially visible on Dispatch, which spawns an orchestrator plus a child session per task. Contributed by [@gianlucamazza](https://github.com/gianlucamazza) ([#62](https://github.com/patrickjaja/claude-cowork-service/issues/62), [#63](https://github.com/patrickjaja/claude-cowork-service/pull/63))
+
 ### Added
 - `pruneSessionCaches` RPC handler (new upstream method in v1.12603.0, called by Desktop's VM disk janitor every 300s, before spawns when disk is low, and from the manual disk cleanup menu) - implemented as a typed no-op returning `{prunedSessions: [], skippedSessions: [], freedBytes: 0, errors: {}}` since native sessions have no VM-style caches
 - `oauthToken` field parsed from spawn params (new in v1.12603.0, mirrors `env.CLAUDE_CODE_OAUTH_TOKEN`; functionally ignored on native Linux where the token reaches the CLI via env)
