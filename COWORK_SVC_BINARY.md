@@ -246,7 +246,7 @@ Three packages: `main`, `pipe`, `vm`
 
 **Newly handled in v1.1.9669:** `handleCreateDiskImage`, `getSessionsDiskInfo`, `deleteSessionDirs` (all no-ops on native Linux).
 
-**Newly handled in v1.12603.0:** `pruneSessionCaches` - new RPC method dispatched via the existing map (no dedicated `handle*` function in the Windows binary; likely guest passthrough). Handled by the Linux daemon as a typed no-op in `pipe/handlers.go`.
+**Newly handled in v1.12603.0:** `pruneSessionCaches` - new RPC method dispatched via the existing map (no dedicated `handle*` function in the Windows binary; likely guest passthrough). Handled by the Linux daemon via the `VMBackend` interface: typed no-op on the native backend, forwarded to the guest sdk-daemon on the KVM backend.
 
 **v1.2.234:** No new handler functions. Binary is a rebuild with updated timestamps only (identical size).
 
@@ -329,7 +329,7 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 ### New in v1.12603.0
 
 - **cowork-svc.exe**: Rebuild with same size (12,649,808 bytes). Same Go version (go1.24.13). New SHA256 `98ca0229dfb56cb936d8943c8820275a0bc68fffbbdb6e8a6b16e23b8727963e`. Module pseudo-version `v0.0.0-20260611054628-a6acd22aa089+dirty`, VCS revision `a6acd22aa0899d30b355d41d9f7764aa925b0758`, build timestamp `2026-06-11T05:46:28Z`. Still a dirty build (`vcs.modified=true`). Handler functions unchanged (no additions/removals), module dependencies unchanged, no new CLI flags, no new event types.
-- **New RPC method `pruneSessionCaches`** - The ONE new RPC dispatch string in the binary. No dedicated host-side `handle*` function - it is dispatched via the existing map (likely guest passthrough on Windows). Params: `{onlyIfFreeBytesBelow, includeSessionTmp, sessionTmpOlderThanSeconds}`, result: `{prunedSessions, skippedSessions, freedBytes, errors}`. Called by Desktop's new VMDiskJanitor: periodic (300 s), pre-spawn low-disk check, and manual disk cleanup menu. Our Linux daemon handles it as a typed no-op in `pipe/handlers.go` (as of this update). Protocol grows from 21 to 22 active methods.
+- **New RPC method `pruneSessionCaches`** - The ONE new RPC dispatch string in the binary. No dedicated host-side `handle*` function - it is dispatched via the existing map (likely guest passthrough on Windows). Params: `{onlyIfFreeBytesBelow, includeSessionTmp, sessionTmpOlderThanSeconds}`, result: `{prunedSessions, skippedSessions, freedBytes, errors}`. Called by Desktop's new VMDiskJanitor: periodic (300 s), pre-spawn low-disk check, and manual disk cleanup menu. Our Linux daemon routes it through the `VMBackend` interface (as of this update): typed no-op on the native backend, forwarded to the guest sdk-daemon on the KVM backend. Protocol grows from 21 to 22 active methods.
 - **Certificate rotation** - Embedded signing certificate dates rotated (260611064518Z/260611064534Z). No behavior change.
 - **chrome-native-host.exe**: Rebuilt. New SHA256 `68e4e6deb0936bbdd23511674f0c34321d62fc543357917076d3b2b78c24dd54`. Same size (1,012,560 bytes).
 - **smol-bin.x64.vhdx**: Rebuilt. New SHA256 `ad4a869a4ed8e22b8d172a2d9d1e50ca4a5d20bfdc067dae6b4055db0336063c`. Same size (37,748,736 bytes).
