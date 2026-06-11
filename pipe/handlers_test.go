@@ -15,7 +15,7 @@ type recordingBackend struct {
 
 func (b *recordingBackend) Configure(memoryMB int, cpuCount int) error { return nil }
 func (b *recordingBackend) CreateVM(name string) error                 { return nil }
-func (b *recordingBackend) StartVM(name string, bundlePath string, memoryGB int) error {
+func (b *recordingBackend) StartVM(name string, bundlePath string, memoryGB int, cpuCount int, apiProbeURL string) error {
 	b.startName = name
 	b.startBundlePath = bundlePath
 	return nil
@@ -27,8 +27,8 @@ func (b *recordingBackend) IsRunning(name string) (bool, error) {
 func (b *recordingBackend) IsGuestConnected(name string) (bool, error) {
 	return false, nil
 }
-func (b *recordingBackend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]MountSpec, rawParams []byte) (string, error) {
-	return "", nil
+func (b *recordingBackend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]MountSpec, rawParams []byte) (string, []string, error) {
+	return "", nil, nil
 }
 func (b *recordingBackend) Kill(processID string, signal string) error { return nil }
 func (b *recordingBackend) WriteStdin(processID string, data []byte) error {

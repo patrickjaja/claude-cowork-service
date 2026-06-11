@@ -73,6 +73,13 @@ func NewAPIReachableEvent(reachable bool) APIReachableEvent {
 	return APIReachableEvent{Type: "apiReachability", Status: status}
 }
 
+// NewAPIReachabilityStatusEvent creates an API reachability event with an
+// explicit status: "reachable", "probably_unreachable", "unreachable", or
+// "unknown".
+func NewAPIReachabilityStatusEvent(status string) APIReachableEvent {
+	return APIReachableEvent{Type: "apiReachability", Status: status}
+}
+
 // StartupStepEvent is emitted to report VM startup progress.
 // Desktop guards with s.step && s.status: "started" means step began,
 // any other value (e.g. "completed") triggers stepCompleted.

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/patrickjaja/claude-cowork-service/pipe"
+	"github.com/patrickjaja/claude-cowork-service/probe"
 	"github.com/patrickjaja/claude-cowork-service/process"
 )
 
@@ -76,14 +77,20 @@ type Backend struct {
 	tracker     *processTracker
 	subscribers map[uint64]func(event interface{})
 	nextSubID   uint64
-	mu          sync.RWMutex
+	// sessionProcs maps session name → process ids spawned for it, so disk
+	// management can tell which session dirs belong to live sessions.
+	sessionProcs map[string]map[string]struct{}
+	// prober checks Desktop's apiProbeURL and emits apiReachability events.
+	prober *probe.Prober
+	mu     sync.RWMutex
 }
 
 // NewBackend creates a native backend that runs processes on the host.
 func NewBackend(debug bool) *Backend {
 	b := &Backend{
-		debug:       debug,
-		subscribers: make(map[uint64]func(event interface{})),
+		debug:        debug,
+		subscribers:  make(map[uint64]func(event interface{})),
+		sessionProcs: make(map[string]map[string]struct{}),
 	}
 	b.tracker = newProcessTracker(b.emitEvent, debug)
 	return b
@@ -113,11 +120,26 @@ func (b *Backend) CreateVM(name string) error {
 	return nil
 }
 
-func (b *Backend) StartVM(name string, bundlePath string, memoryGB int) error {
+func (b *Backend) StartVM(name string, bundlePath string, memoryGB int, cpuCount int, apiProbeURL string) error {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 
 	b.started = true
+	if cpuCount > 0 {
+		b.cpus = cpuCount
+	}
+
+	// Replace any previous prober (StartVM can be called again after StopVM).
+	if b.prober != nil {
+		b.prober.Stop()
+		b.prober = nil
+	}
+	if apiProbeURL != "" {
+		b.prober = probe.New(apiProbeURL, 30*time.Second, func(status string) {
+			b.emitEvent(process.NewAPIReachabilityStatusEvent(status))
+		})
+	}
+	prober := b.prober
+	b.mu.Unlock()
 
 	log.Printf("[native] startVM %s — running natively on host", name)
 
@@ -136,7 +158,13 @@ func (b *Backend) StartVM(name string, bundlePath string, memoryGB int) error {
 		b.emitEvent(process.NewStartupStepEvent("VirtualDiskAttachments", "started"))
 		b.emitEvent(process.NewStartupStepEvent("VirtualDiskAttachments", "completed"))
 		b.emitEvent(process.NewNetworkStatusEvent(true))
-		b.emitEvent(process.NewAPIReachableEvent(true))
+		if prober != nil {
+			// Real probing: emits the first status immediately, then on change.
+			prober.Start()
+		} else {
+			// No probe URL from Desktop — assume reachable like before.
+			b.emitEvent(process.NewAPIReachableEvent(true))
+		}
 	}()
 	return nil
 }
@@ -152,7 +180,7 @@ func (b *Backend) StopVM(name string) error {
 	home, _ := os.UserHomeDir()
 	sessionDir := filepath.Join(home, ".local", "share", "claude-cowork", "sessions", name)
 	if _, err := os.Stat(sessionDir); err == nil {
-		backupDir := sessionDir + ".pre-stop-" + time.Now().Format("20060102-150405")
+		backupDir := sessionDir + backupInfix + time.Now().Format(backupTimeLayout)
 		if cpErr := exec.Command("cp", "-a", sessionDir, backupDir).Run(); cpErr != nil {
 			log.Printf("[native] WARNING: pre-stop backup failed: %v", cpErr)
 		} else {
@@ -164,6 +192,10 @@ func (b *Backend) StopVM(name string) error {
 
 	b.mu.Lock()
 	b.started = false
+	if b.prober != nil {
+		b.prober.Stop()
+		b.prober = nil
+	}
 	b.mu.Unlock()
 
 	b.tracker.killAll()
@@ -185,10 +217,16 @@ func (b *Backend) IsGuestConnected(name string) (bool, error) {
 	return true, nil
 }
 
-func (b *Backend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, _ []byte) (string, error) {
+func (b *Backend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, _ []byte) (string, []string, error) {
 	if b.debug {
 		log.Printf("[native] spawn: %s %v (cwd=%s, mounts=%v)", cmd, args, cwd, mounts)
 	}
+
+	// Mount names whose attachment genuinely failed (symlink error).
+	// Intentional skips (non-directory targets, self-referencing links) are
+	// not failures — Desktop would surface them as broken mounts and retry
+	// them forever even though skipping is the correct native behavior.
+	failedMounts := []string{}
 
 	// The client sends VM paths like /sessions/<name>/mnt/<mount>.
 	// We create these under ~/.local/share/claude-cowork/sessions/ and
@@ -197,7 +235,7 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 	realSessionDir := filepath.Join(home, ".local", "share", "claude-cowork", "sessions", name)
 	mntDir := filepath.Join(realSessionDir, "mnt")
 	if err := os.MkdirAll(mntDir, 0755); err != nil {
-		return "", fmt.Errorf("creating session dir: %w", err)
+		return "", nil, fmt.Errorf("creating session dir: %w", err)
 	}
 
 	for mountName, mount := range mounts {
@@ -236,9 +274,8 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 			log.Printf("[native] remove stale link %s: %v", linkPath, err)
 		}
 		if err := os.Symlink(hostPath, linkPath); err != nil {
-			if b.debug {
-				log.Printf("[native] symlink %s → %s: %v", linkPath, hostPath, err)
-			}
+			log.Printf("[native] mount %s failed: symlink %s → %s: %v", mountName, linkPath, hostPath, err)
+			failedMounts = append(failedMounts, mountName)
 			continue
 		}
 		if b.debug {
@@ -447,7 +484,22 @@ func (b *Backend) Spawn(name string, id string, cmd string, args []string, env m
 		}
 	}
 
-	return b.tracker.spawn(id, cmd, args, env, cwd, sessionPrefix, realSessionDir, mountRemap, reverseMountRemap)
+	processID, err := b.tracker.spawn(id, cmd, args, env, cwd, sessionPrefix, realSessionDir, mountRemap, reverseMountRemap)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// Record which session this process belongs to so disk management
+	// (deleteSessionDirs, pruneSessionCaches) can refuse to touch sessions
+	// that still have a live process.
+	b.mu.Lock()
+	if b.sessionProcs[name] == nil {
+		b.sessionProcs[name] = make(map[string]struct{})
+	}
+	b.sessionProcs[name][processID] = struct{}{}
+	b.mu.Unlock()
+
+	return processID, failedMounts, nil
 }
 
 func (b *Backend) Kill(processID string, signal string) error {
@@ -528,44 +580,8 @@ func (b *Backend) GetDownloadStatus() string {
 	return "ready"
 }
 
-func (b *Backend) GetSessionsDiskInfo(lowWaterBytes int64) (pipe.SessionsDiskInfo, error) {
-	if b.debug {
-		log.Printf("[native] getSessionsDiskInfo lowWaterBytes=%d (no-op, native mode)", lowWaterBytes)
-	}
-	return pipe.SessionsDiskInfo{
-		TotalBytes: 0,
-		FreeBytes:  0,
-		Sessions:   []interface{}{},
-	}, nil
-}
-
-func (b *Backend) DeleteSessionDirs(names []string) (pipe.DeleteSessionDirsResult, error) {
-	if b.debug {
-		log.Printf("[native] deleteSessionDirs names=%v (no-op, native mode)", names)
-	}
-	return pipe.DeleteSessionDirsResult{
-		Deleted: []string{},
-		Errors:  map[string]string{},
-	}, nil
-}
-
-// PruneSessionCaches is a typed no-op on native Linux. The session dirs under
-// ~/.local/share/claude-cowork/sessions/ hold mounts and user work products,
-// not caches - the CLI's caches live in the user's real home, shared with
-// their own claude install, and must not be touched. A well-formed zero
-// result keeps Desktop's disk janitor and telemetry happy.
-func (b *Backend) PruneSessionCaches(onlyIfFreeBytesBelow int64, includeSessionTmp bool, sessionTmpOlderThanSeconds int64) (pipe.PruneSessionCachesResult, error) {
-	if b.debug {
-		log.Printf("[native] pruneSessionCaches onlyIfFreeBytesBelow=%d includeSessionTmp=%v sessionTmpOlderThanSeconds=%d (no-op, native mode)",
-			onlyIfFreeBytesBelow, includeSessionTmp, sessionTmpOlderThanSeconds)
-	}
-	return pipe.PruneSessionCachesResult{
-		PrunedSessions:  []string{},
-		SkippedSessions: []string{},
-		FreedBytes:      0,
-		Errors:          map[string]string{},
-	}, nil
-}
+// GetSessionsDiskInfo, DeleteSessionDirs, and PruneSessionCaches live in
+// diskmgmt.go.
 
 func (b *Backend) CreateDiskImage(diskName string, sizeGiB int) error {
 	if b.debug {
@@ -588,6 +604,12 @@ func (b *Backend) SendGuestResponse(id string, resultJSON string, errMsg string)
 // Shutdown kills all tracked processes.
 func (b *Backend) Shutdown() {
 	log.Printf("[native] shutting down...")
+	b.mu.Lock()
+	if b.prober != nil {
+		b.prober.Stop()
+		b.prober = nil
+	}
+	b.mu.Unlock()
 	b.tracker.killAll()
 }
 

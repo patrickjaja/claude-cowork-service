@@ -17,6 +17,7 @@ import (
 
 	"github.com/patrickjaja/claude-cowork-service/logx"
 	"github.com/patrickjaja/claude-cowork-service/pipe"
+	"github.com/patrickjaja/claude-cowork-service/probe"
 	"github.com/patrickjaja/claude-cowork-service/process"
 )
 
@@ -41,6 +42,10 @@ type KvmBackend struct {
 	qmp    *QmpClient
 	helper *VfsHelper
 	bridge *GuestBridge
+
+	// prober checks Desktop's apiProbeURL and emits apiReachability events
+	// while the VM runs.
+	prober *probe.Prober
 
 	// Pending state for methods called before the VM is fully up.
 	pendingSdkInstall *pendingSdkInstall
@@ -137,11 +142,14 @@ func (b *KvmBackend) CreateVM(name string) error {
 
 // StartVM boots the VM: prepare bundle, create session dir, launch virtiofsd
 // via helper, spawn QEMU, open QMP, wait for guest bridge connection.
-func (b *KvmBackend) StartVM(name string, bundlePath string, memoryGb int) error {
+func (b *KvmBackend) StartVM(name string, bundlePath string, memoryGb int, cpuCount int, apiProbeURL string) error {
 	var stale vmRuntimeState
 	hadStale := false
 
 	b.mu.Lock()
+	if cpuCount > 0 {
+		b.cpus = cpuCount
+	}
 	if b.started {
 		stale, hadStale = b.takeExitedVMStateLocked()
 		if !hadStale {
@@ -340,6 +348,20 @@ func (b *KvmBackend) StartVM(name string, bundlePath string, memoryGb int) error
 		go b.watchdogLoop(watchdogStop)
 	}
 
+	// Probe API reachability from the host. Guest traffic egresses through
+	// host networking (slirp), so host-side reachability mirrors the guest's.
+	if apiProbeURL != "" {
+		b.mu.Lock()
+		if b.prober != nil {
+			b.prober.Stop()
+		}
+		b.prober = probe.New(apiProbeURL, 30*time.Second, func(status string) {
+			b.emit(process.NewAPIReachabilityStatusEvent(status))
+		})
+		b.prober.Start()
+		b.mu.Unlock()
+	}
+
 	b.emit(map[string]interface{}{"type": "vmStarted", "name": name})
 	return nil
 }
@@ -391,13 +413,13 @@ func (b *KvmBackend) IsGuestConnected(name string) (bool, error) {
 
 // Spawn binds any new additionalMounts into the virtiofs share, then
 // forwards the spawn request to the guest sdk-daemon.
-func (b *KvmBackend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, rawParams []byte) (string, error) {
+func (b *KvmBackend) Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]pipe.MountSpec, rawParams []byte) (string, []string, error) {
 	b.mu.RLock()
 	helper := b.helper
 	bridge := b.bridge
 	b.mu.RUnlock()
 	if bridge == nil {
-		return "", fmt.Errorf("VM not started")
+		return "", nil, fmt.Errorf("VM not started")
 	}
 
 	// Bind any additionalMounts the helper doesn't know about yet.
@@ -412,7 +434,7 @@ func (b *KvmBackend) Spawn(name string, id string, cmd string, args []string, en
 			}
 			if err := helper.Bind(mount.Path, mode); err != nil {
 				log.Printf("[kvm] spawn bind failed for %s=%s (%s): %v", mountName, mount.Path, mode, err)
-				return "", fmt.Errorf("vfs bind for %s failed: %w", mountName, err)
+				return "", nil, fmt.Errorf("vfs bind for %s failed: %w", mountName, err)
 			}
 		}
 	}
@@ -456,14 +478,26 @@ func (b *KvmBackend) Spawn(name string, id string, cmd string, args []string, en
 		b.emit(process.NewStderrEvent(id,
 			fmt.Sprintf("Error: Failed to spawn in VM: %v\n", err)))
 		b.emit(process.NewExitEvent(id, 1))
-		return id, nil
+		return id, nil, nil
 	}
 	log.Printf("[kvm] spawn ack from guest: id=%s resp=%s", id, logx.Trunc(string(resp)))
+
+	// The guest's spawn ack reports mounts it failed to attach
+	// (v1.12603.0+ VM bundles); pass them through so Desktop can surface
+	// and retry them. Older guests omit the field — empty list.
+	var ack struct {
+		FailedMounts []string `json:"failedMounts"`
+	}
+	if len(resp) > 0 {
+		if err := json.Unmarshal(resp, &ack); err != nil {
+			log.Printf("[kvm] spawn: could not parse guest ack: %v", err)
+		}
+	}
 
 	b.procMu.Lock()
 	b.processes[id] = struct{}{}
 	b.procMu.Unlock()
-	return id, nil
+	return id, ack.FailedMounts, nil
 }
 
 func (b *KvmBackend) Kill(processID string, signal string) error {
@@ -1035,6 +1069,12 @@ func (b *KvmBackend) cleanupVMRuntime(state vmRuntimeState, name string, reason 
 	if reason != "" {
 		log.Printf("%s", reason)
 	}
+	b.mu.Lock()
+	if b.prober != nil {
+		b.prober.Stop()
+		b.prober = nil
+	}
+	b.mu.Unlock()
 	if state.watchdogStop != nil {
 		close(state.watchdogStop)
 	}

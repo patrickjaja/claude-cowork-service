@@ -38,11 +38,17 @@ type PruneSessionCachesResult struct {
 type VMBackend interface {
 	Configure(memoryMB int, cpuCount int) error
 	CreateVM(name string) error
-	StartVM(name string, bundlePath string, memoryGB int) error
+	// StartVM boots the session runtime. cpuCount and apiProbeURL come from
+	// Desktop's startVM params: cpuCount sizes the VM (ignored natively),
+	// apiProbeURL is probed periodically to emit apiReachability events.
+	StartVM(name string, bundlePath string, memoryGB int, cpuCount int, apiProbeURL string) error
 	StopVM(name string) error
 	IsRunning(name string) (bool, error)
 	IsGuestConnected(name string) (bool, error)
-	Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]MountSpec, rawParams []byte) (string, error)
+	// Spawn starts a session process. failedMounts lists the mount names
+	// that could not be attached; Desktop (v1.12603.0+) reads it from the
+	// spawn response to surface mount failures and retry them on resume.
+	Spawn(name string, id string, cmd string, args []string, env map[string]string, cwd string, mounts map[string]MountSpec, rawParams []byte) (processID string, failedMounts []string, err error)
 	Kill(processID string, signal string) error
 	WriteStdin(processID string, data []byte) error
 	IsProcessRunning(processID string) (bool, int, error)

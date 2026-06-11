@@ -241,7 +241,7 @@ func (h *Handler) handleStartVM(conn net.Conn, req Request) {
 	if name == "" && p.BundlePath != "" {
 		name = filepath.Base(p.BundlePath)
 	}
-	if err := h.backend.StartVM(name, p.BundlePath, p.MemoryGB); err != nil {
+	if err := h.backend.StartVM(name, p.BundlePath, p.MemoryGB, p.CPUCount, p.APIProbeURL); err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
@@ -304,15 +304,17 @@ func (h *Handler) handleSpawn(conn net.Conn, req Request) {
 		return
 	}
 	logx.Debug("spawn parsed: name=%q cmd=%q args=%v cwd=%q env=%v oauthToken=%v", p.Name, p.Cmd, p.Args, p.Cwd, p.Env, p.OauthToken != "")
-	processID, err := h.backend.Spawn(p.Name, p.ID, p.Cmd, p.Args, p.Env, p.Cwd, p.AdditionalMounts, req.Params)
+	processID, failedMounts, err := h.backend.Spawn(p.Name, p.ID, p.Cmd, p.Args, p.Env, p.Cwd, p.AdditionalMounts, req.Params)
 	if err != nil {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
 	// Desktop (since v1.12603.0) reads failedMounts from the spawn result to
-	// surface mount failures in the UI. The native backend fails the whole
-	// spawn on mount errors, so a successful spawn means no failed mounts.
-	WriteResponse(conn, req.ID, map[string]interface{}{"id": processID, "failedMounts": []string{}})
+	// surface mount failures in the UI and retry them on resume.
+	if failedMounts == nil {
+		failedMounts = []string{}
+	}
+	WriteResponse(conn, req.ID, map[string]interface{}{"id": processID, "failedMounts": failedMounts})
 }
 
 func (h *Handler) handleKill(conn net.Conn, req Request) {
