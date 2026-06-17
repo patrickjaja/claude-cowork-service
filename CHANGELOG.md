@@ -4,6 +4,9 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Updated reference materials (`bin/`, `vm-bundle/`) and docs (`COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md`, `COWORK_RPC_PROTOCOL.md`) to Claude Desktop **v1.13576.1**. No protocol or Go code changes: `cowork-svc.exe` is a byte-identical-size rebuild (new SHA, VCS revision `772d01ffc175`, build `2026-06-17`; same handler set, same module deps, only build metadata and signing-cert dates rotated), the `app.asar` index.js diff is entirely minified-identifier churn (no RPC method, spawn-param, event-type, or session/dispatch-keyword changes), and the VM bundle is unchanged (same SHA `6d1538ba`). Dependency bumps only: Agent SDK 0.3.170 -> 0.3.177, TypeScript ~6.0.2 -> ~6.0.3 (Electron 42.4.0 and MCP SDK 1.28.0 unchanged). `chrome-native-host.exe` rebuilt (-8.7 KB). Protocol stays at 22 active methods, 9 event types. `go vet`, `go build`, and `go test` all pass.
+
 ## 1.0.60 — 2026-06-17
 
 ### Fixed

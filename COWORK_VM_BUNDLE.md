@@ -1,4 +1,4 @@
-# Cowork VM Bundle Reference - v1.12603.0
+# Cowork VM Bundle Reference - v1.13576.1
 
 > Re-validate on every upstream Claude Desktop version update.
 
@@ -9,7 +9,9 @@
 - VM images are downloaded from Anthropic CDN on first use
 - URL pattern: `https://downloads.claude.ai/vms/linux/<arch>/<sha>/<filename>.zst`
 
-## Current Config (v1.12603.0)
+## Current Config (v1.13576.1)
+
+> **v1.13576.1:** VM bundle is **unchanged** from v1.12603.0 - same bundle SHA `6d1538ba6fecc4e5c5583993c4b30bb1875f0f5a`, identical rootfs/vmlinuz/initrd checksums and `vm-bundle-config.json`. Only the Claude Desktop wrapper was rebuilt.
 
 > **Note:** The VM bundle SHA changed in v1.12603.0 (previously `5680b11bcdab215cccf07e0c0bd1bd9213b0c25d`, unchanged since v1.1.9669). All VM images are new and every file checksum changed. Checksums are SHA256 of the compressed/downloaded artifacts (e.g. the `.zst` files for win32).
 
@@ -216,6 +218,7 @@ Key installed packages: build-essential, curl, ffmpeg, gcc-11, ghostscript, git,
 
 | Claude Desktop Version | VM Bundle SHA | Notable Changes |
 |----------------------|--------------|-----------------|
+| 1.13576.1 | 6d1538ba6fecc4e5c5583993c4b30bb1875f0f5a | No VM bundle changes; identical config, images, and all file checksums to v1.12603.0 |
 | 1.12603.0 | 6d1538ba6fecc4e5c5583993c4b30bb1875f0f5a | New VM images - SHA and all file checksums changed (first change since v1.1.9669). Images much smaller: rootfs.vhdx.zst 2.2 GB -> 1.3 GB, initrd.zst 166 MB -> 71 MB. Config structure unchanged. Rootfs deep dive not yet performed |
 | 1.8555.2 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | No VM bundle changes; identical config and images to previous versions since v1.1.9669 |
 | 1.8089.0 | 5680b11bcdab215cccf07e0c0bd1bd9213b0c25d | No VM bundle changes; identical config and images to previous versions since v1.1.9669 |

@@ -1,4 +1,4 @@
-# Cowork Service Binary Analysis - v1.12603.0
+# Cowork Service Binary Analysis - v1.13576.1
 
 ## Binary Overview
 
@@ -101,7 +101,7 @@ Claude Desktop (Electron, patched)
 
 ---
 
-## cowork-svc.exe Deep Analysis (last version: v1.12603.0)
+## cowork-svc.exe Deep Analysis (last version: v1.13576.1)
 
 > **NOTE:** In v1.6259.0 the installer switched from Squirrel (nupkg) to MSIX, moving cowork-svc.exe from `lib/net45/resources/` to `app/resources/`. The binary was never removed - our extract scripts now use MSIX extraction. The analysis below covers the binary as extracted from the current MSIX package. The pipe protocol is unchanged - the TypeScript client in `index.js` still connects to `\\.\pipe\cowork-vm-service` and sends the same RPC methods.
 
@@ -109,12 +109,12 @@ Claude Desktop (Electron, patched)
 |----------|-------|
 | **File type** | PE32+ executable for MS Windows 6.01 (console), x86-64, 8 sections |
 | **Go version** | go1.24.13 |
-| **Module** | github.com/anthropics/cowork-win32-service (v0.0.0-20260611054628-a6acd22aa089+dirty) |
-| **Build date** | 2026-06-11 |
+| **Module** | github.com/anthropics/cowork-win32-service (v0.0.0-20260617000127-772d01ffc175+dirty) |
+| **Build date** | 2026-06-17 |
 | **Size** | 12,649,808 bytes |
-| **SHA256** | 98ca0229dfb56cb936d8943c8820275a0bc68fffbbdb6e8a6b16e23b8727963e |
-| **VCS revision** | a6acd22aa0899d30b355d41d9f7764aa925b0758 |
-| **Build timestamp** | 2026-06-11T05:46:28Z |
+| **SHA256** | 2b2250acbc57132c6f2cc9fcff3f7b3cd8e339fc342b242c6b31e42fcae74949 |
+| **VCS revision** | 772d01ffc175c3795a49154acdecf043d634b5d1 |
+| **Build timestamp** | 2026-06-17T00:01:27Z |
 | **Last Squirrel version** | v1.5354.0 (nupkg) |
 | **MSIX since** | v1.6259.0 (moved to `app/resources/`) |
 
@@ -270,17 +270,17 @@ Three packages: `main`, `pipe`, `vm`
 
 ---
 
-## bin/ Directory Checksums (v1.12603.0)
+## bin/ Directory Checksums (v1.13576.1)
 
 Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switched from Squirrel nupkg to MSIX - files moved but were not removed.
 
 | File | SHA256 | Size | Notes |
 |------|--------|------|-------|
-| cowork-svc.exe | 98ca0229dfb56cb936d8943c8820275a0bc68fffbbdb6e8a6b16e23b8727963e | 12,649,808 bytes | Present - moved to MSIX in v1.6259.0 |
-| chrome-native-host.exe | 68e4e6deb0936bbdd23511674f0c34321d62fc543357917076d3b2b78c24dd54 | 1,012,560 bytes | Present |
-| smol-bin.x64.vhdx | ad4a869a4ed8e22b8d172a2d9d1e50ca4a5d20bfdc067dae6b4055db0336063c | 37,748,736 bytes | Present - moved to MSIX in v1.6259.0 |
+| cowork-svc.exe | 2b2250acbc57132c6f2cc9fcff3f7b3cd8e339fc342b242c6b31e42fcae74949 | 12,649,808 bytes | Present - moved to MSIX in v1.6259.0 |
+| chrome-native-host.exe | 30a92ea760a2dd757e190dae28fb7db8a9e4d2971b29b5ddcc337ae37aef500e | 1,003,856 bytes | Present |
+| smol-bin.x64.vhdx | 083fa32c1ee06d37502cc452ab04468c3bf065f6d855b302dbe8c3514af37e01 | 37,748,736 bytes | Present - moved to MSIX in v1.6259.0 |
 | cowork-plugin-shim.sh | N/A | N/A | Not found in MSIX (may have moved elsewhere) |
-| app.asar | d2813b4a3502041c2b2b9089a56957c54d456c2c05a9670f2e467806f5fc60bd | 36,358,096 bytes (~34.7 MB) | Present, updated to v1.12603.0 |
+| app.asar | de7263a52ede1a7ae37e1d5fa6f126b91603f8d9b72e7f266daf8a80701185b1 | 36,538,771 bytes (~34.8 MB) | Present, updated to v1.13576.1 |
 
 ---
 
@@ -288,7 +288,7 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 
 | Property | Value |
 |----------|-------|
-| **Package** | @ant/desktop v1.12603.0 |
+| **Package** | @ant/desktop v1.13576.1 |
 | **Electron** | 42.4.0 |
 | **Node requirement** | >=22.0.0 |
 | **Sentry release** | (verify on extraction) |
@@ -325,6 +325,15 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 - **Artifact lifecycle** — New telemetry events: `cowork_artifacts_created`, `cowork_artifacts_updated`, `cowork_artifacts_imported`, `cowork_artifacts_exported`
 - **IPC UUID change** — Internal Electron IPC bridge UUID changed (no protocol impact)
 - **SDK versions unchanged** — Same Electron 40.8.5, same claude-agent-sdk versions
+
+### New in v1.13576.1
+
+- **cowork-svc.exe**: Rebuild with **byte-identical size** (12,649,808 bytes). Same Go version (go1.24.13). New SHA256 `2b2250acbc57132c6f2cc9fcff3f7b3cd8e339fc342b242c6b31e42fcae74949`. Module pseudo-version `v0.0.0-20260617000127-772d01ffc175+dirty`, VCS revision `772d01ffc175c3795a49154acdecf043d634b5d1`, build timestamp `2026-06-17T00:01:27Z`. Still a dirty build (`vcs.modified=true`). **Handler functions unchanged** (no additions/removals), **module dependencies unchanged**, no new CLI flags, no new event types. The only binary diff is build metadata and certificate date rotation - no protocol impact. No Go code changes required.
+- **Certificate rotation** - Embedded signing certificate dates rotated (`260611064518Z`/`260611064534Z` -> `260617003710Z`/`260617003732Z`). No behavior change.
+- **chrome-native-host.exe**: Rebuilt, slightly smaller (1,012,560 -> 1,003,856 bytes, -8,704 bytes). New SHA256 `30a92ea760a2dd757e190dae28fb7db8a9e4d2971b29b5ddcc337ae37aef500e`. Browser-extension native host only - no cowork-svc protocol impact.
+- **smol-bin.x64.vhdx**: Rebuilt. New SHA256 `083fa32c1ee06d37502cc452ab04468c3bf065f6d855b302dbe8c3514af37e01`. Same size (37,748,736 bytes).
+- **app.asar**: Updated to v1.13576.1 (36,538,771 bytes, ~34.8 MB, +180,675 bytes). New SHA256 `de7263a52ede1a7ae37e1d5fa6f126b91603f8d9b72e7f266daf8a80701185b1`. Electron 42.4.0 (unchanged). Agent SDK 0.3.170 -> 0.3.177. TypeScript ~6.0.2 -> ~6.0.3. @modelcontextprotocol/sdk 1.28.0 (unchanged). No RPC method-name changes, no spawn/event/session/dispatch keyword changes - the index.js diff is entirely minified-identifier churn.
+- **VM bundle**: Unchanged - same bundle SHA `6d1538ba6fecc4e5c5583993c4b30bb1875f0f5a`, identical rootfs/vmlinuz/initrd checksums and `vm-bundle-config.json`.
 
 ### New in v1.12603.0
 
@@ -551,20 +560,20 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 
 ### Key Dependency Versions
 
-*(claude-agent-sdk, electron, and @modelcontextprotocol/sdk verified for v1.12603.0; remaining rows last verified for v1.8089.0)*
+*(claude-agent-sdk, electron, typescript, and @modelcontextprotocol/sdk verified for v1.13576.1; remaining rows last verified for v1.8089.0)*
 
 | Package | Version | Changed from v1.5354.0 |
 |---------|---------|------------------------|
-| @anthropic-ai/claude-agent-sdk | 0.3.170 | was 0.2.121 |
+| @anthropic-ai/claude-agent-sdk | 0.3.177 | was 0.2.121 |
 | @anthropic-ai/claude-agent-sdk (native binary resolution) | new | new dependency |
-| @anthropic-ai/claude-agent-sdk-future | 0.3.144-dev.20260515 | was 0.2.93-dev.20260403 |
+| @anthropic-ai/claude-agent-sdk-future | 0.3.174-dev.20260610 | was 0.2.93-dev.20260403 |
 | @anthropic-ai/conway-client | 0.2.0-dev.20260403 | unchanged |
 | @anthropic-ai/mcpb | 2.1.2 | unchanged |
 | @anthropic-ai/sdk | ^0.70.0 | unchanged |
 | @modelcontextprotocol/sdk | 1.28.0 | unchanged |
 | @typescript/native-preview | 7.0.0-dev | new dependency |
 | electron | 42.4.0 | was 41.3.0 |
-| typescript | ~6.0.2 | unchanged |
+| typescript | ~6.0.3 | was 6.0.2 |
 | zod | ^3.25.64 | unchanged |
 | ws | ^8.18.0 | unchanged |
 | ssh2 | ^1.16.0 | unchanged |
@@ -603,6 +612,7 @@ Extracted from MSIX package (`app/resources/`). In v1.6259.0 the installer switc
 
 | Claude Desktop Version | cowork-svc.exe Size | Notable Changes |
 |----------------------|-------------------|-----------------|
+| 1.13576.1 | 12,649,808 bytes | Rebuild (byte-identical size, new SHA `2b2250ac...`). Same Go 1.24.13, same handler set, same module dependencies. No protocol changes - binary diff is build metadata + cert date rotation only. Electron 42.4.0 (unchanged), Agent SDK 0.3.170 -> 0.3.177, TypeScript ~6.0.2 -> ~6.0.3, MCP SDK 1.28.0 (unchanged). app.asar index.js diff is pure minified-identifier churn. chrome-native-host.exe rebuilt (-8.7 KB). VM bundle unchanged (same SHA 6d1538ba). VCS revision 772d01ffc175, build 2026-06-17T00:01:27Z. No Go code changes |
 | 1.12603.0 | 12,649,808 bytes | Rebuild (same size, new SHA). Same Go 1.24.13, same handler set, same dependencies. ONE new RPC dispatch string: `pruneSessionCaches` (VMDiskJanitor disk cleanup; no dedicated handler function, dispatched via existing map). Cert date rotation. Electron 42.4.0, Agent SDK 0.3.170. VCS revision a6acd22aa089, build 2026-06-11T05:46:28Z |
 | 1.8555.2 | 12,649,808 bytes | Rebuild (same size, new SHA). Same Go 1.24.13, same handler set, no new Go source files. No protocol changes. New spawn env vars (CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS et al., VERTEX_REGION_CLAUDE_*). New Desktop-internal artifact system and MCP tools (no wire impact). Agent SDK 0.3.149. VCS revision a476c316c741, build 2026-05-22T23:04:37Z |
 | 1.8089.0 | 12,649,808 bytes | Rebuild (same size, new SHA). Same Go 1.24.13, same handler set. `handleCreateDiskImage` and `SetCondaDiskPath` removed from binary strings. `installSdk` params changed to `{sdkSubpath, version}`. Electron 41.6.1, Agent SDK 0.3.142. New spawn env vars: CLAUDE_CODE_HOST_PLATFORM, TZ, ENABLE_PROMPT_CACHING_1H, CLAUDE_CODE_SUBAGENT_MODEL. VCS revision ffa892bf99d5, build 2026-05-19T05:14:44Z. No protocol changes |
