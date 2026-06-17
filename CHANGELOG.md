@@ -4,6 +4,10 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- **Live Artifacts render as garbled binary** (both backends): the `readFile` RPC returned the file content as raw text (`{"content": string(data)}`), but Desktop's Linux client always base64-decodes `response.result.content` (`Buffer.from(content,"base64")` at every call site, including the `create_artifact`/`update_artifact` `html_path` reader). With hostLoopMode forced off on Linux (so Cowork routes through this daemon), the artifact reader takes the VM branch and decoded valid HTML as base64, producing binary garbage that was written to the user's `Claude/Artifacts/<name>/index.html`; the `cowork-artifact://` protocol then served unparseable content and the renderer failed with `ERR_ABORTED (-3)`. The handler now base64-encodes the raw backend bytes (the upstream wire contract). `ReadFile` is unified to return raw bytes on both backends: the KVM guest-forward branch, which receives the guest's already-base64 content, now decodes it (defensively, tolerating a raw-returning guest) so the handler does not double-encode. ([#136](https://github.com/patrickjaja/claude-desktop-bin/issues/136), reported by [@draperbr](https://github.com/draperbr))
+- **Live Artifacts fail to read the source HTML** (native backend): when `create_artifact`/`update_artifact` reads back an `html_path` that points inside the cowork scratch root, Claude Desktop prepends the cowork-home base (`<home>/.local/share/claude-cowork/`) to the already-absolute path one or more extra times before sending the `readFile` RPC (observed 2x and 3x), so the daemon opened a non-existent doubled path and the read failed - the artifact pane stayed blank / "File is outside allowed folders". `readFile` now collapses any run of that repeated cowork-home segment back to a single occurrence before opening the file. Scoped strictly to that segment, so arbitrary user paths are never rewritten. ([#136](https://github.com/patrickjaja/claude-desktop-bin/issues/136))
+
 ## 1.0.59 — 2026-06-17
 
 ## 1.0.58 — 2026-06-12

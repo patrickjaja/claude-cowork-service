@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net"
 	"path/filepath"
@@ -389,8 +390,14 @@ func (h *Handler) handleReadFile(conn net.Conn, req Request) {
 		WriteError(conn, req.ID, -32000, err.Error())
 		return
 	}
-	// Desktop's Linux client reads `response.result.content`.
-	WriteResponse(conn, req.ID, map[string]interface{}{"content": string(data)})
+	// Desktop's Linux client reads `response.result.content` and ALWAYS
+	// base64-decodes it (`Buffer.from(content,"base64")` at every call site,
+	// e.g. the create_artifact/update_artifact html_path reader). The backend
+	// returns raw file bytes, so encode here to honor the upstream wire
+	// contract. Returning raw text instead corrupts artifacts (issue #136).
+	WriteResponse(conn, req.ID, map[string]interface{}{
+		"content": base64.StdEncoding.EncodeToString(data),
+	})
 }
 
 func (h *Handler) handleInstallSdk(conn net.Conn, req Request) {

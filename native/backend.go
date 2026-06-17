@@ -519,10 +519,47 @@ func (b *Backend) MountPath(processID string, subpath string, mountName string, 
 }
 
 func (b *Backend) ReadFile(processName string, filePath string) ([]byte, error) {
+	resolved := collapseRepeatedCoworkPrefix(filePath)
 	if b.debug {
-		log.Printf("[native] readFile %s", filePath)
+		if resolved != filePath {
+			log.Printf("[native] readFile %s (de-duped from %s)", resolved, filePath)
+		} else {
+			log.Printf("[native] readFile %s", resolved)
+		}
 	}
-	return os.ReadFile(filePath)
+	return os.ReadFile(resolved)
+}
+
+// collapseRepeatedCoworkPrefix works around an upstream Claude Desktop bug
+// (issue #136): when create_artifact/update_artifact reads an html_path that is
+// an absolute path inside the cowork scratch root, Desktop prepends the
+// cowork-home base to it one or more extra times before sending the readFile
+// RPC, e.g.
+//   /home/u/.local/share/claude-cowork/home/u/.local/share/claude-cowork/sessions/<name>/x.html
+// The repeat count is not stable (observed 2x and 3x in the same session), so
+// collapse any run of the repeated "<home>/.local/share/claude-cowork/" segment
+// down to a single occurrence. Scoped strictly to that segment so it never
+// rewrites arbitrary user paths; returns the input unchanged when the doubled
+// marker is absent or the home dir can't be resolved. This complements the
+// outputs-cwd fix in chooseSpawnCwd: cwd makes relative writes land in the
+// allow-listed outputs dir, while this recovers the read when the model instead
+// passes an absolute scratch path that Desktop then mangles.
+func collapseRepeatedCoworkPrefix(filePath string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filePath
+	}
+	sep := string(filepath.Separator)
+	base := filepath.Join(home, ".local", "share", "claude-cowork") + sep
+	// Desktop concatenates base + an already-absolute path, so the doubled form
+	// is "<base>" immediately followed by "<base>" minus its leading separator
+	// (the inner absolute path keeps its own leading "/home/..."). Collapse each
+	// such repeat back to a single base.
+	marker := base + strings.TrimPrefix(base, sep)
+	for strings.Contains(filePath, marker) {
+		filePath = strings.Replace(filePath, marker, base, 1)
+	}
+	return filePath
 }
 
 func (b *Backend) InstallSdk(sdkSubpath string, version string) error {

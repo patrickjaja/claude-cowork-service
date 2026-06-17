@@ -2,6 +2,7 @@ package vm
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -599,6 +600,15 @@ func (b *KvmBackend) ReadFile(processName string, filePath string) ([]byte, erro
 			if json.Unmarshal(resp, &r) == nil {
 				if r.Error != "" {
 					return nil, fmt.Errorf("%s", r.Error)
+				}
+				// The guest returns content base64-encoded (the upstream
+				// readFile wire contract). Decode to raw bytes so this method
+				// returns raw bytes like the native backend and host fallback;
+				// the RPC handler re-encodes once. Defensive: the guest is the
+				// upstream binary and not in this repo, so tolerate a guest that
+				// returns raw text by falling through to the verbatim bytes.
+				if raw, derr := base64.StdEncoding.DecodeString(r.Content); derr == nil {
+					return raw, nil
 				}
 				return []byte(r.Content), nil
 			}
