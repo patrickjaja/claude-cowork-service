@@ -5,13 +5,13 @@
 
 buildGoModule rec {
   pname = "claude-cowork-service";
-  version = "1.0.61";
+  version = "1.0.62";
 
   src = fetchFromGitHub {
     owner = "patrickjaja";
     repo = "claude-cowork-service";
     rev = "v${version}";
-    hash = "sha256-ZBAGyl9DXaL/feZx5euRtnB9GFqU61/5Z5URO5OC76E=";
+    hash = "sha256-uj9tZFVhkRCrs3yiZCxgk0nTDEa+8LpydiXYSZIZiIk=";
   };
 
   vendorHash = null; # Pure stdlib, no external dependencies
