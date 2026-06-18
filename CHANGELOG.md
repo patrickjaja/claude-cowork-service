@@ -4,6 +4,9 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- **Stop shipping a `claude-cowork-service-debug` package**: with the Arch-default `debug` build option enabled in `makepkg.conf`, `makepkg` was stripping the Go binary's symbols into a separate auto-generated `claude-cowork-service-debug` package and pulling it into installs as a dependency. Detached debug symbols aren't useful for this service. Added `options=(!debug)` to the PKGBUILD so no debug package is produced regardless of the builder's `makepkg.conf`; the installed binary is still stripped by makepkg's `strip` option, so nothing else changes.
+
 ## 1.0.61 — 2026-06-18
 
 ### Fixed

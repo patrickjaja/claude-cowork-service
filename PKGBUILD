@@ -9,6 +9,11 @@ arch=('x86_64' 'aarch64')
 url="https://github.com/patrickjaja/claude-cowork-service"
 license=('MIT')
 
+# Don't emit a separate -debug package. The shipped binary is stripped by makepkg's
+# `strip` option; detached debug symbols aren't useful for this service and pull an
+# extra claude-cowork-service-debug package into installs. Overrides makepkg.conf.
+options=(!debug)
+
 depends=('util-linux')
 optdepends=('claude-desktop-bin: Unofficial Linux frontend for Claude Desktop Cowork'
             'claude-code: An agentic coding tool that lives in your terminal (you can also install via native installer)'
