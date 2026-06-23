@@ -1,7 +1,9 @@
-# Cowork RPC Protocol Reference - v1.14271.0
+# Cowork RPC Protocol Reference - v1.15200.0
 
 > **This document is the single source of truth for the protocol between Claude Desktop and cowork-svc.**
 > Re-validate on every upstream Claude Desktop version update.
+>
+> **Re-validated against v1.15200.0 (2026-06-23): no change.** Socket name (`cowork-vm-service`), wire framing (4-byte big-endian length prefix + JSON, 10 MB max), all 22 RPC methods, all 7 event types (`onStdout`/`onStderr`/`onExit`/`onError`/`onNetworkStatus`/`onApiReachability`/`onStartupStep`), and spawn args/env are byte-identical to v1.14271.0. The new v1.15200 IPC handlers (`directMcpCallTool`/`directMcpListResources`/`directMcpReadResource`, `getCrForSession`/`getCrRefSummary`, `reportCommitHash`) are renderer<->Electron-main IPC and do NOT travel over this socket - the daemon never sees them. No daemon change required.
 
 ---
 
