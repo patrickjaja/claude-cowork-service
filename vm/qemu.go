@@ -21,10 +21,14 @@ type qemuLaunchSpec struct {
 	bundleDir    string
 	sessionDir   string
 	rootDisk     string
+	rootDiskFmt  string // qcow2 (default) or raw; format of rootDisk
 	sessionData  string
 	smolBinPath  string // optional
-	kernel       string
-	initrd       string
+	boot         bootMode
+	kernel       string // bootDirectKernel only
+	initrd       string // bootDirectKernel only
+	ovmfCode     string // bootUEFIDisk only (read-only firmware)
+	ovmfVars     string // bootUEFIDisk only (writable per-session NVRAM)
 	monitorSock  string
 	virtiofsSock string
 	cid          uint32
@@ -53,29 +57,57 @@ func startQEMU(spec qemuLaunchSpec, debug bool) (*qemuInstance, error) {
 		"-nographic",
 	}
 
-	// Direct kernel boot is required — the rootfs is built for Hyper-V and
-	// has no BIOS-bootable MBR/GRUB, so falling through to SeaBIOS just
-	// spins on iPXE forever. Fail loudly if vmlinuz/initrd are missing.
-	if _, err := os.Stat(spec.kernel); err != nil {
-		return nil, fmt.Errorf("kernel missing at %s: %w", spec.kernel, err)
+	switch spec.boot {
+	case bootUEFIDisk:
+		// Native Linux cloud image (rootfs.img): a full GPT disk with its own
+		// ESP/GRUB, so it boots itself under OVMF/UEFI. No external
+		// kernel/initrd; GRUB inside the image loads the kernel and sets the
+		// console/root cmdline. Writable NVRAM (ovmfVars) is a per-session
+		// copy because the firmware template is root-owned/read-only.
+		if _, err := os.Stat(spec.ovmfCode); err != nil {
+			return nil, fmt.Errorf("OVMF firmware (CODE) missing at %s: %w", spec.ovmfCode, err)
+		}
+		if _, err := os.Stat(spec.ovmfVars); err != nil {
+			return nil, fmt.Errorf("OVMF NVRAM (VARS) missing at %s: %w", spec.ovmfVars, err)
+		}
+		if debug {
+			log.Printf("[kvm] UEFI disk boot: code=%s vars=%s", spec.ovmfCode, spec.ovmfVars)
+		}
+		args = append(args,
+			"-drive", fmt.Sprintf("if=pflash,format=raw,unit=0,readonly=on,file=%s", spec.ovmfCode),
+			"-drive", fmt.Sprintf("if=pflash,format=raw,unit=1,file=%s", spec.ovmfVars),
+		)
+	default: // bootDirectKernel
+		// Legacy Hyper-V rootfs: no BIOS-bootable MBR/GRUB, so falling through
+		// to SeaBIOS just spins on iPXE forever. Direct-boot an external
+		// kernel/initrd; fail loudly if they are missing.
+		if _, err := os.Stat(spec.kernel); err != nil {
+			return nil, fmt.Errorf("kernel missing at %s: %w", spec.kernel, err)
+		}
+		if _, err := os.Stat(spec.initrd); err != nil {
+			return nil, fmt.Errorf("initrd missing at %s: %w", spec.initrd, err)
+		}
+		if debug {
+			log.Printf("[kvm] direct kernel boot: kernel=%s initrd=%s", spec.kernel, spec.initrd)
+		}
+		args = append(args,
+			"-kernel", spec.kernel,
+			"-initrd", spec.initrd,
+			"-append", "root=LABEL=cloudimg-rootfs console=ttyS0 quiet",
+		)
 	}
-	if _, err := os.Stat(spec.initrd); err != nil {
-		return nil, fmt.Errorf("initrd missing at %s: %w", spec.initrd, err)
-	}
-	if debug {
-		log.Printf("[kvm] direct kernel boot: kernel=%s initrd=%s", spec.kernel, spec.initrd)
-	}
-	args = append(args,
-		"-kernel", spec.kernel,
-		"-initrd", spec.initrd,
-		"-append", "root=LABEL=cloudimg-rootfs console=ttyS0 quiet",
-	)
 
 	// Rootfs → /dev/vda. Mounted writable: matches Windows behaviour where
 	// the rootfs persists between boots, so apt-installed packages and other
-	// system-state edits survive a stop/start cycle.
+	// system-state edits survive a stop/start cycle. Format depends on the
+	// boot mode: qcow2 for the converted vhdx, or a qcow2 overlay backing the
+	// raw rootfs.img (rootDiskFmt records the actual format of rootDisk).
+	rootFmt := spec.rootDiskFmt
+	if rootFmt == "" {
+		rootFmt = "qcow2"
+	}
 	args = append(args,
-		"-drive", fmt.Sprintf("file=%s,format=qcow2,if=virtio", spec.rootDisk),
+		"-drive", fmt.Sprintf("file=%s,format=%s,if=virtio", spec.rootDisk, rootFmt),
 	)
 
 	// Session disk → /dev/vdb (formatted by guest sdk-daemon on first boot).
@@ -105,7 +137,11 @@ func startQEMU(spec qemuLaunchSpec, debug bool) (*qemuInstance, error) {
 		"-device", fmt.Sprintf("vhost-user-fs-pci,chardev=virtiofs,tag=%s", VFSShareMountTag),
 	)
 
-	cmd := exec.Command("qemu-system-x86_64", args...)
+	// NOTE: x86_64 only for now. aarch64 (Pi 5 / Jetson) would need
+	// qemu-system-aarch64 + AAVMF firmware + "-machine virt" (not q35); the
+	// direct-kernel path's args are also x86-shaped. hostQEMUSystemBinary()
+	// exists for that future work but the rest of this arg list is x86_64.
+	cmd := exec.Command(hostQEMUSystemBinary(), args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	// Detach QEMU into its own process group so shell/systemd SIGTERM

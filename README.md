@@ -205,7 +205,8 @@ systemctl --user enable --now claude-cowork
 | **Runtime** | bash | Binary resolution in launcher scripts |
 | **Required** | Claude Code CLI | `claude` binary must be in `$PATH` - `npm i -g @anthropic-ai/claude-code` recommended (always latest); declared as `optdepends` in packaging so you control the version |
 | **Optional** | socat | Socket health check fallback |
-| **KVM mode** | qemu-system-x86_64 | QEMU system emulator (only for `COWORK_VM_BACKEND=kvm`) |
+| **KVM mode** | qemu-system-x86_64 | QEMU system emulator (only for `COWORK_VM_BACKEND=kvm`). x86_64 only - on aarch64 use the native backend. |
+| **KVM mode** | OVMF (UEFI firmware) | Required to boot the native Linux VM image (`rootfs.img`). Install `edk2-ovmf` (Arch/Fedora) or `ovmf` (Debian/Ubuntu). Auto-detected; override with `COWORK_OVMF_CODE` / `COWORK_OVMF_VARS`. Not needed for the older `rootfs.vhdx` image. |
 | **KVM mode** | virtiofsd | Virtio filesystem daemon - packaged separately on most distros |
 | **KVM mode** | /dev/kvm | KVM kernel module (`kvm`, `kvm_intel` or `kvm_amd`) |
 | **KVM mode** | /dev/vhost-vsock | Kernel module: `modprobe vhost_vsock` |
@@ -511,6 +512,8 @@ Available environment variables:
 | Variable | Values | Default | Description |
 |----------|--------|---------|-------------|
 | `COWORK_VM_BACKEND` | `native`, `kvm` | `native` | Backend selection. `native` runs commands directly on the host (no VM). `kvm` runs sessions inside a QEMU/KVM virtual machine. |
+| `COWORK_OVMF_CODE` | path | *(autodetect)* | KVM mode only. Path to the OVMF UEFI firmware **CODE** image, used to boot the native `rootfs.img` VM. Override when autodetection fails on your distro. Autodetect tries Arch (`/usr/share/edk2/x64/OVMF_CODE.4m.fd`), Debian/Ubuntu (`/usr/share/OVMF/OVMF_CODE_4M.fd`), Fedora (`/usr/share/edk2/ovmf/OVMF_CODE.fd`). |
+| `COWORK_OVMF_VARS` | path | *(autodetect)* | KVM mode only. Path to the OVMF UEFI firmware **VARS** (NVRAM) template; a writable copy is made per VM session. Override alongside `COWORK_OVMF_CODE`. |
 | `COWORK_LOG_FULL` | `1` | *(unset)* | Disable log line truncation (useful for debugging RPC payloads) |
 
 ### Prerequisites
@@ -573,6 +576,27 @@ print(json.loads(sock.recv(length)))
 ```
 
 ## Troubleshooting
+
+### KVM: "no VM bundle available: ... has no rootfs.qcow2 or rootfs.vhdx"
+
+Claude Desktop **v1.17282** switched the Linux VM bundle to a native, self-booting
+`rootfs.img` (replacing the Windows `rootfs.vhdx`). A claude-cowork-service older
+than the version that added `rootfs.img` support cannot boot it, so KVM sessions
+fail with this error. (Existing users may keep working on a leftover `rootfs.vhdx`
+until the workspace is cleared; fresh installs break immediately.)
+
+**Fix:** update claude-cowork-service to a version with native-image support, then
+**restart the service so Desktop reconnects to the new binary** - replacing the
+binary on disk is not enough while the old process is still running:
+
+```bash
+systemctl --user restart claude-cowork   # or: pkill cowork-svc && relaunch
+```
+
+If KVM still can't find UEFI firmware (`... no OVMF_CODE found`), install OVMF
+(`edk2-ovmf` on Arch/Fedora, `ovmf` on Debian/Ubuntu) or point at it explicitly
+with `COWORK_OVMF_CODE` / `COWORK_OVMF_VARS`. On **aarch64**, KVM mode is
+unsupported - use the native backend (`COWORK_VM_BACKEND=native`).
 
 ### Wayland / Computer Use issues
 

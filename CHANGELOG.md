@@ -4,6 +4,12 @@ All notable changes to claude-cowork-service will be documented in this file.
 
 ## Unreleased
 
+### Added
+- **KVM mode now boots the native Linux VM image (`rootfs.img`) via UEFI.** Claude Desktop **v1.17282** introduced a native Linux ("unix") VM bundle that ships a self-booting `rootfs.img` (a GPT disk with its own ESP/GRUB) instead of the Windows `rootfs.vhdx`. The daemon now detects `rootfs.img` and boots it with OVMF UEFI firmware (no external `-kernel`/`-initrd`), attaching it via a copy-on-write qcow2 overlay so the downloaded image stays pristine while system-state edits persist across stop/start. The legacy `rootfs.vhdx` direct-kernel path is kept as a fallback. OVMF firmware is auto-detected across Arch/Debian/Ubuntu/Fedora/RHEL; override with `COWORK_OVMF_CODE` / `COWORK_OVMF_VARS`. UEFI boot is x86_64 only - on aarch64, KVM mode now fails with a clear message directing users to the native backend (which has no such limitation).
+
+### Fixed
+- **KVM mode breaks on Claude Desktop v1.17282+ until this version is installed and the service restarted.** v1.17282+ downloads the new `rootfs.img`, which older daemons (which only recognize `rootfs.qcow2`/`rootfs.vhdx`) cannot boot - KVM sessions fail with `no VM bundle available: ... has no rootfs.qcow2 or rootfs.vhdx`. Existing users with a leftover `rootfs.vhdx` in `vm_bundles/` keep working on that until the workspace is cleared/reinstalled; fresh KVM installs break immediately. **Fix: update claude-cowork-service, then restart the service** (`systemctl --user restart claude-cowork`, or kill + relaunch) so Desktop connects to the new binary. The native backend is unaffected.
+
 ## 1.0.62 — 2026-06-18
 
 ### Fixed

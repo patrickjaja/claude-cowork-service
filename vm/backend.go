@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -191,11 +192,68 @@ func (b *KvmBackend) StartVM(name string, bundlePath string, memoryGb int, cpuCo
 
 	bundleDir, err := b.findBundle(bundlePath)
 	if err != nil {
-		return fmt.Errorf("no VM bundle available: %w", err)
+		// This error is shown verbatim in Claude Desktop's "Failed to start
+		// Claude's workspace" dialog. A common cause is a newer Desktop release
+		// shipping a VM-image format this (older) daemon doesn't recognize yet,
+		// so steer the user to update + restart the service. (Harmless if the
+		// real cause is something else; restarting after an update is the right
+		// first step regardless.)
+		return fmt.Errorf("no VM bundle available: %w. "+
+			"If Claude Desktop was recently updated, your claude-cowork-service may be "+
+			"outdated - update it and restart the service "+
+			"(https://github.com/patrickjaja/claude-cowork-service)", err)
 	}
-	rootQcow2, err := ensureVHDXConverted(bundleDir, "rootfs")
-	if err != nil {
-		return fmt.Errorf("preparing rootfs: %w", err)
+
+	// Decide the boot strategy from what the bundle ships. A native Linux
+	// cloud image (rootfs.img, upstream "unix" bundle as of Desktop v1.17282)
+	// is self-booting under OVMF/UEFI; the legacy Hyper-V rootfs.vhdx is not
+	// and needs an external kernel/initrd. rootfs.img wins when both exist:
+	// it is the purpose-built native Linux guest.
+	boot := bootDirectKernel
+	rootDisk := ""
+	rootDiskFmt := "qcow2"
+	var ovmfCode, ovmfVarsTemplate string
+
+	if imgPath := rootfsImagePath(bundleDir); imgPath != "" {
+		// UEFI disk boot is x86_64-only: the QEMU args below are q35/x86-shaped
+		// and rely on OVMF (aarch64 would need qemu-system-aarch64, AAVMF
+		// firmware, and -machine virt). The legacy direct-kernel path is x86
+		// too, and preflight already hard-requires qemu-system-x86_64; KVM mode
+		// has never run on aarch64. On aarch64, the native backend (run claude
+		// directly on the host, no VM) is the supported path. Fail loud and
+		// actionable rather than deep inside QEMU.
+		if runtime.GOARCH != "amd64" {
+			return fmt.Errorf("KVM/VM mode is not supported on %s - the bundled VM "+
+				"image boots via x86_64 UEFI only. Use the native backend instead "+
+				"(set COWORK_VM_BACKEND=native or start cowork-svc with --backend native), "+
+				"which runs Claude Code directly on the host with no VM", runtime.GOARCH)
+		}
+		boot = bootUEFIDisk
+		ovmfCode = findOVMFCode()
+		if ovmfCode == "" {
+			return fmt.Errorf("rootfs.img needs UEFI firmware but no OVMF_CODE found; " +
+				"install edk2-ovmf (Arch) / ovmf (Debian/Ubuntu) / edk2-ovmf (Fedora), " +
+				"or set COWORK_OVMF_CODE")
+		}
+		ovmfVarsTemplate = findOVMFVarsTemplate()
+		if ovmfVarsTemplate == "" {
+			return fmt.Errorf("rootfs.img needs UEFI firmware but no OVMF_VARS template found; " +
+				"install the OVMF package or set COWORK_OVMF_VARS")
+		}
+		overlay, oerr := ensureNativeRootOverlay(bundleDir, imgPath)
+		if oerr != nil {
+			return fmt.Errorf("preparing rootfs.img overlay: %w", oerr)
+		}
+		rootDisk = overlay // qcow2 overlay backing the raw rootfs.img
+		rootDiskFmt = "qcow2"
+		log.Printf("[kvm] native UEFI boot: rootfs.img=%s overlay=%s ovmf=%s", imgPath, overlay, ovmfCode)
+	} else {
+		rootQcow2, cerr := ensureVHDXConverted(bundleDir, "rootfs")
+		if cerr != nil {
+			return fmt.Errorf("preparing rootfs: %w", cerr)
+		}
+		rootDisk = rootQcow2
+		rootDiskFmt = "qcow2"
 	}
 
 	sessionID := name
@@ -207,6 +265,17 @@ func (b *KvmBackend) StartVM(name string, bundlePath string, memoryGb int, cpuCo
 		return fmt.Errorf("creating session dir: %w", err)
 	}
 	killStalePID(sessionDir)
+
+	// For UEFI boot, give this VM its own writable NVRAM copy (the firmware
+	// template is root-owned/read-only). Lives in sessionDir so it is torn
+	// down with the session.
+	var ovmfVars string
+	if boot == bootUEFIDisk {
+		ovmfVars, err = ensureOVMFVars(sessionDir, ovmfVarsTemplate)
+		if err != nil {
+			return fmt.Errorf("preparing OVMF NVRAM: %w", err)
+		}
+	}
 
 	// sessiondata.qcow2 lives next to the other bundle images, not per-host
 	// session, mirroring upstream. The guest carves this disk into
@@ -266,11 +335,15 @@ func (b *KvmBackend) StartVM(name string, bundlePath string, memoryGb int, cpuCo
 	spec := qemuLaunchSpec{
 		bundleDir:    bundleDir,
 		sessionDir:   sessionDir,
-		rootDisk:     rootQcow2,
+		rootDisk:     rootDisk,
+		rootDiskFmt:  rootDiskFmt,
 		sessionData:  sessionDiskPath,
 		smolBinPath:  smolBinPath,
+		boot:         boot,
 		kernel:       filepath.Join(bundleDir, "vmlinuz"),
 		initrd:       filepath.Join(bundleDir, "initrd"),
+		ovmfCode:     ovmfCode,
+		ovmfVars:     ovmfVars,
 		monitorSock:  monitorSock,
 		virtiofsSock: virtiofsSock,
 		cid:          cid,
@@ -751,7 +824,7 @@ func (b *KvmBackend) GetDownloadStatus() string {
 			continue
 		}
 		d := filepath.Join(b.bundlesDir, e.Name())
-		for _, f := range []string{"rootfs.qcow2", "rootfs.vhdx"} {
+		for _, f := range []string{nativeRootfsImageName, "rootfs.qcow2", "rootfs.vhdx"} {
 			if _, err := os.Stat(filepath.Join(d, f)); err == nil {
 				return "Ready"
 			}
@@ -1027,7 +1100,7 @@ func (b *KvmBackend) findBundle(bundlePath string) (string, error) {
 		if hasUsableRootfs(requested) {
 			return requested, nil
 		}
-		return "", fmt.Errorf("requested bundle %s has no rootfs.qcow2 or rootfs.vhdx", requested)
+		return "", fmt.Errorf("requested bundle %s has no rootfs.img, rootfs.qcow2 or rootfs.vhdx", requested)
 	}
 
 	candidates := []string{b.bundlesDir, b.baseDir}
@@ -1056,7 +1129,9 @@ func (b *KvmBackend) findBundle(bundlePath string) (string, error) {
 }
 
 func hasUsableRootfs(dir string) bool {
-	for _, f := range []string{"rootfs.qcow2", "rootfs.vhdx"} {
+	// rootfs.img = native UEFI cloud image (upstream "unix" bundle);
+	// rootfs.qcow2/.vhdx = legacy Hyper-V image (direct-kernel boot).
+	for _, f := range []string{nativeRootfsImageName, "rootfs.qcow2", "rootfs.vhdx"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
 			return true
 		}
