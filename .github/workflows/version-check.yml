@@ -1,8 +1,10 @@
 name: Version Check
 
 on:
-  schedule:
-    - cron: '0 */2 * * *'  # Every 2 hours
+  # Scheduled polling disabled: this project is deprecated & unmaintained
+  # (superseded by claude-desktop-bin). The 2-hourly cron used to auto-detect
+  # new upstream Claude Desktop versions and file issues / open PRs — pointless
+  # on a repo that will receive no further releases. Kept as manual-only.
   workflow_dispatch:  # Allow manual trigger
 
 permissions:
