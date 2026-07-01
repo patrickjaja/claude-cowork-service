@@ -16,10 +16,12 @@ options=(!debug)
 
 depends=('util-linux')
 # NOTE: intentionally no longer OptDepends on claude-desktop-bin. This package is
-# deprecated and its former frontend (claude-desktop-bin) now repackages the
-# official Claude Desktop Linux .deb, which runs Cowork via its own native VM
-# backend and does not use this daemon. Dropping the cross-link removes the stale
-# "Required by: claude-cowork-service" entry from the claude-desktop-bin AUR page.
+# deprecated; Cowork on Linux is now handled by the actively-maintained
+# claude-desktop-bin (it patches the official Claude Desktop Linux build and uses
+# its built-in Cowork sandbox), which no longer needs this daemon. Dropping the
+# cross-link removes the stale "Required by: claude-cowork-service" entry from the
+# claude-desktop-bin AUR page. (claude-desktop-bin is the recommended migration
+# target -- see the deprecation notice in claude-cowork-service.install.)
 optdepends=('claude-code: An agentic coding tool that lives in your terminal (you can also install via native installer)'
             'systemd: required for the systemd user service unit (provided by base on Arch)'
             'openrc: required to use the OpenRC init script (Artix Linux)')
