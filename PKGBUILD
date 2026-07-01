@@ -4,7 +4,7 @@
 pkgname=claude-cowork-service
 pkgver=1.0.0
 pkgrel=1
-pkgdesc="Native Linux backend for Claude Desktop Cowork"
+pkgdesc="[DEPRECATED - UNMAINTAINED] Native Linux backend for Claude Desktop Cowork; superseded by the official Claude Desktop Linux .deb"
 arch=('x86_64' 'aarch64')
 url="https://github.com/patrickjaja/claude-cowork-service"
 license=('MIT')
@@ -15,8 +15,12 @@ license=('MIT')
 options=(!debug)
 
 depends=('util-linux')
-optdepends=('claude-desktop-bin: Unofficial Linux frontend for Claude Desktop Cowork'
-            'claude-code: An agentic coding tool that lives in your terminal (you can also install via native installer)'
+# NOTE: intentionally no longer OptDepends on claude-desktop-bin. This package is
+# deprecated and its former frontend (claude-desktop-bin) now repackages the
+# official Claude Desktop Linux .deb, which runs Cowork via its own native VM
+# backend and does not use this daemon. Dropping the cross-link removes the stale
+# "Required by: claude-cowork-service" entry from the claude-desktop-bin AUR page.
+optdepends=('claude-code: An agentic coding tool that lives in your terminal (you can also install via native installer)'
             'systemd: required for the systemd user service unit (provided by base on Arch)'
             'openrc: required to use the OpenRC init script (Artix Linux)')
 makedepends=('go')

@@ -2,6 +2,14 @@
 
 All notable changes to claude-cowork-service will be documented in this file.
 
+## 1.2.0 — 2026-07-01 - Final release (goodbye)
+
+### Changed
+- **Final "goodbye" release.** This is the last version that will be published to the AUR. The package remains owned (not orphaned) to prevent a takeover, but receives no further updates.
+- **PKGBUILD: removed the `claude-desktop-bin` OptDepends.** Now that `claude-desktop-bin` repackages the official Claude Desktop Linux `.deb` (which runs Cowork via its own native VM backend), it no longer uses this daemon. Dropping the cross-link also removes the stale `Required by: claude-cowork-service` entry from the `claude-desktop-bin` AUR page.
+- **PKGBUILD: `pkgdesc` now prefixed `[DEPRECATED - UNMAINTAINED]`** so the status is visible in `yay -Ss` and on the AUR page.
+- **Install hook: prints a deprecation notice** on install/upgrade, pointing users to the official Claude Desktop Linux build and to `claude-desktop-bin`.
+
 ## 2026-06-30 - DEPRECATED & UNMAINTAINED
 
 ### Deprecated
