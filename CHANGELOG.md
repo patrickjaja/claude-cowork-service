@@ -2,7 +2,12 @@
 
 All notable changes to claude-cowork-service will be documented in this file.
 
-## Unreleased
+## 2026-06-30 - DEPRECATED & UNMAINTAINED
+
+### Deprecated
+- **This project is deprecated and no longer maintained; the repository will be archived.** On 2026-06-30 Anthropic shipped an official Claude Desktop Linux beta (`.deb` + apt repo, `downloads.claude.ai/claude-desktop`; docs at https://code.claude.com/docs/en/desktop-linux). The official build ships its own native Cowork VM backend - `cowork-linux-helper` (a Go binary, module `coworkd`), `virtiofsd`, a `smol-bin.x64.img` guest image, and QEMU/OVMF - speaking essentially the same length-prefixed JSON-over-vsock RPC protocol this daemon reverse-engineered. It supersedes this daemon's KVM mode entirely, and the sibling project `claude-desktop-bin` has been refactored to repackage the official `.deb` and no longer depends on this daemon.
+- **Known limitation (why someone might still want this):** the official Cowork hard-requires `/dev/kvm` + `vhost_vsock` with no software-emulation fallback - even its "host-native" mode still boots the VM to run shell commands. This daemon's `native` mode (no VM, no KVM) was the only way to run Cowork on KVM-less hosts (cloud VMs with nested virtualization off, containers, locked-down machines). That niche is no longer served by any actively-maintained project; fork or pin the last release if you need it.
+- The codebase, reverse-engineering notes (`COWORK_RPC_PROTOCOL.md`, `COWORK_SVC_BINARY.md`, `COWORK_VM_BUNDLE.md`), and the `native`-mode implementation are intentionally retained as a historical/forkable reference. No code is removed by this change.
 
 ## 1.1.0 — 2026-06-30
 

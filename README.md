@@ -1,5 +1,17 @@
 # claude-cowork-service
 
+> ## DEPRECATED & UNMAINTAINED (as of 2026-06-30)
+>
+> **This project is deprecated and no longer maintained.** On 2026-06-30 Anthropic shipped an **official Claude Desktop Linux beta** (`.deb` + apt repo, served from `downloads.claude.ai/claude-desktop`). The official build ships its **own native Cowork VM backend** (`cowork-linux-helper`, `virtiofsd`, a `smol-bin.x64.img` guest image, and QEMU/OVMF) speaking essentially the same vsock RPC protocol this daemon reverse-engineered. The official package supersedes this daemon's KVM mode entirely, and the sibling project [`claude-desktop-bin`](https://github.com/patrickjaja/claude-desktop-bin) has been refactored to repackage the official Linux `.deb` and no longer depends on this daemon.
+>
+> **Use the official build instead:**
+> - Docs / install guide: https://code.claude.com/docs/en/desktop-linux
+> - APT repository: `downloads.claude.ai/claude-desktop`
+>
+> **Known limitation of the official build:** Cowork there **hard-requires `/dev/kvm` + `vhost_vsock`** - there is no software-emulation fallback, and even its "host-native" mode still boots the VM to run shell commands. This daemon's **`native` mode (no VM, no KVM) was the only way to run Cowork on KVM-less hosts** (cloud VMs with nested virtualization disabled, containers, locked-down machines). That niche is no longer served by any actively-maintained project; if you need it, fork or pin the last release of this repo.
+>
+> **This repository will be archived.** It is kept read-only as a historical and forkable reference - the reverse-engineering notes (RPC protocol, VM bundle, binary analysis) and the `native`-mode implementation remain useful to anyone studying the protocol. Everything below is preserved as-is.
+
 [![Claude Desktop](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/version-check.json)](https://claude.ai/download)
 [![AUR version](https://img.shields.io/aur/version/claude-cowork-service)](https://aur.archlinux.org/packages/claude-cowork-service)
 [![APT repo](https://img.shields.io/endpoint?url=https://patrickjaja.github.io/claude-cowork-service/badges/apt-repo.json)](https://patrickjaja.github.io/claude-cowork-service/)
